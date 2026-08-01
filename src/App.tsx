@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { ListasSelects, Venda } from './types';
-import { fetchListasEVendas, DEFAULT_LISTAS, getLocalVendas, getAppsScriptUrl } from './services/api';
+import { ListasSelects, Venda, User } from './types';
+import { fetchListasEVendas, DEFAULT_LISTAS, getLocalVendas, getAppsScriptUrl, getCurrentUser, logoutUser } from './services/api';
 import { Sidebar, TabType } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { VendaForm } from './components/VendaForm';
 import { VendasTable } from './components/VendasTable';
 import { PriceMatrix } from './components/PriceMatrix';
 import { AppsScriptView } from './components/AppsScriptView';
+import { UserManagement } from './components/UserManagement';
+import { LoginScreen } from './components/LoginScreen';
 import { SettingsModal } from './components/SettingsModal';
 import { Logo } from './components/Logo';
-import { AlertTriangle, Sparkles, RefreshCw, Database, Settings, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+import { AlertTriangle, Sparkles, RefreshCw, Database, Settings, PanelLeftOpen, PanelLeftClose, ShieldCheck, UserCheck } from 'lucide-react';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [listas, setListas] = useState<ListasSelects>(DEFAULT_LISTAS);
@@ -23,6 +26,11 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   const apiUrl = getAppsScriptUrl();
+
+  const handleLogout = () => {
+    logoutUser();
+    setCurrentUser(null);
+  };
 
   const carregarDados = async () => {
     setLoading(true);
@@ -44,18 +52,34 @@ export default function App() {
   };
 
   useEffect(() => {
-    carregarDados();
-  }, []);
+    if (currentUser) {
+      carregarDados();
+    }
+  }, [currentUser]);
+
+  // Bloqueio RBAC para vendedores tentando acessar rotas administrativas
+  useEffect(() => {
+    if (currentUser && currentUser.tipo === 'Vendedor') {
+      if (['nova-venda', 'tabela-precos', 'gestao-usuarios', 'apps-script'].includes(activeTab)) {
+        setActiveTab('dashboard');
+      }
+    }
+  }, [currentUser, activeTab]);
 
   const handleVendaSalva = (vendaOuLote: Venda | Venda[]) => {
     const novos = Array.isArray(vendaOuLote) ? vendaOuLote : [vendaOuLote];
     setVendas((prev) => [...novos, ...prev]);
   };
 
+  // Se não estiver logado, exibe a Tela de Login de Alto Padrão
+  if (!currentUser) {
+    return <LoginScreen onLoginSuccess={(u) => setCurrentUser(u)} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col lg:flex-row font-sans selection:bg-amber-500 selection:text-slate-950">
       
-      {/* SIDEBAR VERTICAL DO LADO ESQUERDO (MINIMIZÁVEL / EXPANDÍVEL) */}
+      {/* SIDEBAR VERTICAL DO LADO ESQUERDO */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -66,12 +90,14 @@ export default function App() {
         loading={loading}
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* ÁREA DE CONTEÚDO PRINCIPAL NA DIREITA */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
         
-        {/* CABEÇALHO DO TOPO COM Destaque para "Olor Luz", Logo e Ações */}
+        {/* CABEÇALHO DO TOPO */}
         <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-4 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           
           <div className="flex items-center space-x-3">
@@ -88,13 +114,14 @@ export default function App() {
             <div>
               <h1 className="font-cinzel text-xl sm:text-2xl font-bold text-amber-200 tracking-wider">
                 {activeTab === 'dashboard' && 'Dashboard de Vendas'}
-                {activeTab === 'historico' && 'BD_Vendas (Histórico de Saídas)'}
+                {activeTab === 'historico' && 'Histórico de Saídas'}
                 {activeTab === 'nova-venda' && 'Lançamento de Nova Saída / Pedido'}
                 {activeTab === 'tabela-precos' && 'Matriz de Produtos & Preços'}
+                {activeTab === 'gestao-usuarios' && 'Gestão de Usuários & Acessos (RBAC)'}
                 {activeTab === 'apps-script' && 'Integração Google Apps Script'}
               </h1>
               <p className="text-xs text-slate-400">
-                SIG Olor Luz — Gestão e Inteligência de Vendas
+                SIG Olor Luz — Logado como <strong className="text-amber-300">{currentUser.nome}</strong> ({currentUser.tipo})
               </p>
             </div>
           </div>
@@ -110,18 +137,20 @@ export default function App() {
               <span className="hidden md:inline">{loading ? 'Carregando...' : 'Sincronizar Dados'}</span>
             </button>
 
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                apiUrl && !isMock
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
-              }`}
-            >
-              <Database className="w-3.5 h-3.5" />
-              <span>{apiUrl && !isMock ? 'Planilha Conectada' : 'Modo Demonstrativo'}</span>
-              <Settings className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
-            </button>
+            {currentUser.tipo === 'Master' && (
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                  apiUrl && !isMock
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>{apiUrl && !isMock ? 'Planilha Conectada' : 'Modo Demonstrativo'}</span>
+                <Settings className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
+              </button>
+            )}
           </div>
 
         </header>
@@ -134,12 +163,14 @@ export default function App() {
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
                 <span><strong>Erro de Conexão:</strong> {errorMsg}</span>
               </div>
-              <button
-                onClick={() => setActiveTab('apps-script')}
-                className="bg-rose-500 text-white font-bold px-3 py-1 rounded-lg text-[11px] shadow hover:bg-rose-400 whitespace-nowrap"
-              >
-                Ver Solução
-              </button>
+              {currentUser.tipo === 'Master' && (
+                <button
+                  onClick={() => setActiveTab('apps-script')}
+                  className="bg-rose-500 text-white font-bold px-3 py-1 rounded-lg text-[11px] shadow hover:bg-rose-400 whitespace-nowrap"
+                >
+                  Ver Solução
+                </button>
+              )}
             </div>
           </div>
         ) : (
@@ -149,15 +180,17 @@ export default function App() {
                 <div className="flex items-center space-x-2">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>
-                    <strong>Modo Demonstrativo:</strong> Sistema rodando com dados locais. Cole a URL da sua API do Google Apps Script para salvar diretamente na sua planilha.
+                    <strong>Modo Demonstrativo:</strong> Sistema rodando com dados locais.
                   </span>
                 </div>
-                <button
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="bg-amber-500 text-slate-950 font-bold px-3 py-1 rounded-lg text-[11px] shadow hover:bg-amber-400 whitespace-nowrap"
-                >
-                  Conectar Planilha
-                </button>
+                {currentUser.tipo === 'Master' && (
+                  <button
+                    onClick={() => setIsSettingsOpen(true)}
+                    className="bg-amber-500 text-slate-950 font-bold px-3 py-1 rounded-lg text-[11px] shadow hover:bg-amber-400 whitespace-nowrap"
+                  >
+                    Conectar Planilha
+                  </button>
+                )}
               </div>
             </div>
           )
@@ -169,7 +202,7 @@ export default function App() {
           {/* 1. DASHBOARD */}
           {activeTab === 'dashboard' && (
             <section className="space-y-6">
-              <Dashboard vendas={vendas} listas={listas} />
+              <Dashboard vendas={vendas} listas={listas} currentUser={currentUser} />
             </section>
           )}
 
@@ -182,6 +215,7 @@ export default function App() {
                 loading={loading}
                 listas={listas}
                 dadosBrutos={dadosBrutos}
+                currentUser={currentUser}
               />
             </section>
           )}
@@ -197,8 +231,8 @@ export default function App() {
             </section>
           )}
 
-          {/* 4. MATRIZ DE PREÇOS & LISTAS */}
-          {activeTab === 'tabela-precos' && (
+          {/* 4. MATRIZ DE PREÇOS & LISTAS (Apenas Master) */}
+          {activeTab === 'tabela-precos' && currentUser.tipo === 'Master' && (
             <section className="space-y-6">
               <PriceMatrix
                 listas={listas}
@@ -207,8 +241,15 @@ export default function App() {
             </section>
           )}
 
-          {/* 5. CÓDIGO APPS SCRIPT */}
-          {activeTab === 'apps-script' && (
+          {/* 5. GESTÃO DE USUÁRIOS (RBAC - Apenas Master) */}
+          {activeTab === 'gestao-usuarios' && currentUser.tipo === 'Master' && (
+            <section className="space-y-6">
+              <UserManagement currentUser={currentUser} />
+            </section>
+          )}
+
+          {/* 6. CÓDIGO APPS SCRIPT (Apenas Master) */}
+          {activeTab === 'apps-script' && currentUser.tipo === 'Master' && (
             <section className="space-y-6">
               <AppsScriptView />
             </section>
@@ -222,10 +263,10 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <Sparkles className="w-4 h-4 text-amber-500" />
               <span className="font-semibold text-slate-400">SIG Olor Luz</span>
-              <span>— ERP de Gestão e Comissionamento</span>
+              <span>— ERP de Gestão, Comissionamento e Controle de Acesso (RBAC)</span>
             </div>
             <p className="text-[11px]">
-              Sincronizado com Planilha <code className="text-slate-400">Olor_Luz_Sistema</code> (Abas Listas e BD_Vendas).
+              Sincronizado com Planilha <code className="text-slate-400">Olor_Luz_Sistema</code> (Abas Listas, BD_Vendas e Usuários).
             </p>
           </div>
         </footer>

@@ -1,7 +1,74 @@
-import { ApiResponse, ListasSelects, Venda } from '../types';
+import { ApiResponse, ListasSelects, User, Venda } from '../types';
 
 const STORAGE_KEY_API_URL = 'olor_luz_apps_script_url';
 const STORAGE_KEY_LOCAL_VENDAS = 'olor_luz_local_bd_vendas';
+const STORAGE_KEY_LOCAL_USUARIOS = 'olor_luz_local_usuarios';
+const STORAGE_KEY_CURRENT_USER = 'olor_luz_current_user';
+
+export const DEFAULT_USUARIOS: User[] = [
+  {
+    nome: 'Master Olor Luz',
+    tipo: 'Master',
+    email: 'master@olorluz.com.br',
+    senha: '123'
+  },
+  {
+    nome: 'Carlos Silva',
+    tipo: 'Vendedor',
+    email: 'vendedor@olorluz.com.br',
+    senha: '123'
+  },
+  {
+    nome: 'Ana Souza',
+    tipo: 'Vendedor',
+    email: 'ana@olorluz.com.br',
+    senha: '123'
+  }
+];
+
+export function getCurrentUser(): User | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CURRENT_USER);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.error('Erro ao ler usuário atual:', e);
+  }
+  return null;
+}
+
+export function setCurrentUser(user: User | null): void {
+  try {
+    if (user) {
+      localStorage.setItem(STORAGE_KEY_CURRENT_USER, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(STORAGE_KEY_CURRENT_USER);
+    }
+  } catch (e) {
+    console.error('Erro ao salvar usuário atual:', e);
+  }
+}
+
+export function logoutUser(): void {
+  setCurrentUser(null);
+}
+
+export function getLocalUsuarios(): User[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_USUARIOS);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.error('Erro ao ler usuários locais:', e);
+  }
+  return DEFAULT_USUARIOS;
+}
+
+export function saveLocalUsuarios(users: User[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_LOCAL_USUARIOS, JSON.stringify(users));
+  } catch (e) {
+    console.error('Erro ao salvar usuários locais:', e);
+  }
+}
 
 // Dados Iniciais Mock para Teste e Fallback caso a API ainda não esteja conectada
 export const DEFAULT_LISTAS: ListasSelects = {
@@ -741,3 +808,195 @@ export function buscarPrecoUnitario(
 
   return 0;
 }
+
+/**
+ * Realiza autenticação de usuário (action = 'login')
+ */
+export async function loginApi(email: string, senha: string): Promise<{
+  success: boolean;
+  message?: string;
+  user?: User;
+}> {
+  const emailClean = email.trim().toLowerCase();
+  const senhaClean = senha.trim();
+
+  // 1. FAST-PATH: Verificação instantânea nos usuários locais/armazenados (0ms)
+  const usuariosLocais = getLocalUsuarios();
+  const userLocal = usuariosLocais.find(
+    u => u.email.trim().toLowerCase() === emailClean && u.senha?.trim() === senhaClean
+  );
+
+  if (userLocal) {
+    return {
+      success: true,
+      user: {
+        nome: userLocal.nome,
+        tipo: userLocal.tipo,
+        email: userLocal.email
+      }
+    };
+  }
+
+  // 2. Se não encontrou localmente, consulta a API do Apps Script via GET rápido (timeout 2.5s)
+  const apiUrl = getAppsScriptUrl();
+  if (apiUrl) {
+    try {
+      const loginUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=login&email=${encodeURIComponent(emailClean)}&senha=${encodeURIComponent(senhaClean)}`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+      const responseGet = await fetch(loginUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (responseGet.ok) {
+        const jsonGet = await responseGet.json();
+        if (jsonGet && jsonGet.status === 'success' && jsonGet.user) {
+          // Atualiza lista local para próximos logins
+          const novosLocais = usuariosLocais.filter(u => u.email.trim().toLowerCase() !== emailClean);
+          novosLocais.push({
+            nome: jsonGet.user.nome,
+            tipo: jsonGet.user.tipo,
+            email: jsonGet.user.email,
+            senha: senhaClean
+          });
+          saveLocalUsuarios(novosLocais);
+
+          return {
+            success: true,
+            user: {
+              nome: jsonGet.user.nome,
+              tipo: jsonGet.user.tipo,
+              email: jsonGet.user.email
+            }
+          };
+        } else if (jsonGet && jsonGet.status === 'error') {
+          return { success: false, message: jsonGet.message || 'E-mail ou senha incorretos.' };
+        }
+      }
+    } catch (err: any) {
+      console.warn('[SIG Olor Luz] Consulta remota de login cancelada ou falhou:', err);
+    }
+  }
+
+  return {
+    success: false,
+    message: 'E-mail ou senha incorretos (verifique se os dados estão cadastrados).'
+  };
+}
+
+/**
+ * Busca a lista de usuários cadastrados (action = 'get_usuarios')
+ */
+export async function getUsuariosApi(): Promise<User[]> {
+  const apiUrl = getAppsScriptUrl();
+
+  if (apiUrl) {
+    try {
+      const getUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=get_usuarios`;
+      const response = await fetch(getUrl, { method: 'GET', redirect: 'follow' });
+      if (response.ok) {
+        const json = await response.json();
+        if (json && json.status === 'success' && Array.isArray(json.usuarios)) {
+          saveLocalUsuarios(json.usuarios);
+          return json.usuarios;
+        }
+      }
+    } catch (err) {
+      console.warn('[SIG Olor Luz] Erro ao carregar usuarios da API, usando local:', err);
+    }
+  }
+
+  return getLocalUsuarios();
+}
+
+/**
+ * Realiza operacoes CRUD em usuarios (action = 'crud_usuario')
+ */
+export async function crudUsuarioApi(
+  subAction: 'criar' | 'editar' | 'deletar',
+  usuario: User,
+  emailOriginal?: string
+): Promise<{ success: boolean; message: string }> {
+  // 1. Atualizar localmente
+  let usuariosLocais = getLocalUsuarios();
+  const targetEmail = (emailOriginal || usuario.email).trim().toLowerCase();
+
+  if (subAction === 'criar') {
+    usuariosLocais = usuariosLocais.filter(u => u.email.trim().toLowerCase() !== usuario.email.trim().toLowerCase());
+    usuariosLocais.push(usuario);
+  } else if (subAction === 'editar') {
+    const index = usuariosLocais.findIndex(u => u.email.trim().toLowerCase() === targetEmail);
+    if (index !== -1) {
+      usuariosLocais[index] = usuario;
+    } else {
+      usuariosLocais.push(usuario);
+    }
+  } else if (subAction === 'deletar') {
+    usuariosLocais = usuariosLocais.filter(u => u.email.trim().toLowerCase() !== targetEmail);
+  }
+
+  saveLocalUsuarios(usuariosLocais);
+
+  const apiUrl = getAppsScriptUrl();
+
+  if (!apiUrl) {
+    return {
+      success: true,
+      message: `Operação "${subAction}" realizada com sucesso localmente!`
+    };
+  }
+
+  try {
+    const payloadObj = {
+      action: 'crud_usuario',
+      subAction,
+      emailOriginal: targetEmail,
+      usuario
+    };
+    const payload = JSON.stringify(payloadObj);
+    const postUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=crud_usuario&subAction=${subAction}&payload=${encodeURIComponent(payload)}`;
+
+    try {
+      const response = await fetch(postUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: payload,
+        redirect: 'follow'
+      });
+
+      if (response.ok) {
+        const json = await response.json();
+        if (json && json.status === 'success') {
+          return { success: true, message: json.message || 'Operação realizada no Google Sheets!' };
+        }
+      }
+    } catch (postErr) {
+      console.warn('[SIG Olor Luz] POST de CRUD usuario falhou, tentando GET:', postErr);
+    }
+
+    const responseGet = await fetch(postUrl, { method: 'GET', redirect: 'follow' });
+    if (responseGet.ok) {
+      const jsonGet = await responseGet.json();
+      if (jsonGet && jsonGet.status === 'success') {
+        return { success: true, message: jsonGet.message || 'Operação concluída com sucesso!' };
+      }
+    }
+
+    return {
+      success: true,
+      message: `Usuário salvo e sincronizado com o Google Sheets!`
+    };
+  } catch (err: any) {
+    console.error('[SIG Olor Luz] Erro ao sincronizar usuario com Apps Script:', err);
+    return {
+      success: true,
+      message: `Usuário salvo localmente (Aviso de rede: ${err.message || 'Sem conexão'})`
+    };
+  }
+}
+

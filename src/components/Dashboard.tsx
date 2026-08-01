@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Venda, ListasSelects } from '../types';
+import { Venda, ListasSelects, User } from '../types';
 import { formatarMoeda } from '../utils/calculations';
 import { 
   TrendingUp, 
@@ -38,9 +38,10 @@ import {
 interface DashboardProps {
   vendas: Venda[];
   listas: ListasSelects;
+  currentUser?: User | null;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ vendas, listas }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ vendas, listas, currentUser }) => {
   // 1. ESTADOS DOS FILTROS
   const [dataInicio, setDataInicio] = useState<string>('');
   const [dataFim, setDataFim] = useState<string>('');
@@ -115,12 +116,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ vendas, listas }) => {
   // 2. VENDAS FILTRADAS
   const vendasFiltradas = useMemo(() => {
     return vendas.filter((v) => {
+      // Se for Vendedor, exibe estritamente apenas suas próprias vendas
+      if (currentUser && currentUser.tipo === 'Vendedor') {
+        const vendorName = (currentUser.nome || '').trim().toLowerCase();
+        const saleVendor = (v.vendedor || '').trim().toLowerCase();
+        if (saleVendor !== vendorName) return false;
+      } else {
+        if (vendedorFiltro !== 'todos' && v.vendedor !== vendedorFiltro) return false;
+      }
+
       // Data
       if (dataInicio && v.data < dataInicio) return false;
       if (dataFim && v.data > dataFim) return false;
-
-      // Vendedor
-      if (vendedorFiltro !== 'todos' && v.vendedor !== vendedorFiltro) return false;
 
       // Tipo Saída
       if (tipoSaidaFiltro !== 'todos' && v.tipoSaida !== tipoSaidaFiltro) return false;
@@ -140,7 +147,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ vendas, listas }) => {
 
       return true;
     });
-  }, [vendas, dataInicio, dataFim, vendedorFiltro, tipoSaidaFiltro, tabelaPrecoFiltro, busca]);
+  }, [vendas, dataInicio, dataFim, vendedorFiltro, tipoSaidaFiltro, tabelaPrecoFiltro, busca, currentUser]);
 
   // 3. CÁLCULO DOS KPIs GERAIS
   const kpis = useMemo(() => {
@@ -333,16 +340,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ vendas, listas }) => {
           {/* Vendedor */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 mb-1">Vendedor</label>
-            <select
-              value={vendedorFiltro}
-              onChange={(e) => setVendedorFiltro(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-400 font-medium"
-            >
-              <option value="todos">Todos os Vendedores</option>
-              {vendedoresOpcoes.map((v) => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-            </select>
+            {currentUser && currentUser.tipo === 'Vendedor' ? (
+              <div className="w-full bg-slate-950/80 border border-amber-500/30 rounded-xl px-2.5 py-1.5 text-xs text-amber-300 font-semibold flex items-center justify-between">
+                <span className="truncate">{currentUser.nome}</span>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30 shrink-0">Fixo</span>
+              </div>
+            ) : (
+              <select
+                value={vendedorFiltro}
+                onChange={(e) => setVendedorFiltro(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-400 font-medium"
+              >
+                <option value="todos">Todos os Vendedores</option>
+                {vendedoresOpcoes.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Tipo de Saída */}

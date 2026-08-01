@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Venda, ListasSelects } from '../types';
+import { Venda, ListasSelects, User as UserAccount } from '../types';
 import { formatarMoeda, formatarDataBR } from '../utils/calculations';
 import { excluirPedidoApi, atualizarPedidoApi, buscarPrecoUnitario, DEFAULT_LISTAS } from '../services/api';
 import html2pdf from 'html2pdf.js';
@@ -12,7 +12,7 @@ import {
   AlertCircle, 
   RefreshCw, 
   Gift, 
-  User, 
+  User as UserIcon, 
   ChevronDown, 
   ChevronUp, 
   FileText, 
@@ -34,6 +34,7 @@ interface VendasTableProps {
   loading: boolean;
   listas?: ListasSelects;
   dadosBrutos?: any[];
+  currentUser?: UserAccount | null;
 }
 
 interface PedidoAgrupado {
@@ -57,8 +58,11 @@ export const VendasTable: React.FC<VendasTableProps> = ({
   onRefresh, 
   loading,
   listas = DEFAULT_LISTAS,
-  dadosBrutos = []
+  dadosBrutos = [],
+  currentUser
 }) => {
+  const isMaster = !currentUser || currentUser.tipo === 'Master';
+
   const [busca, setBusca] = useState<string>('');
   const [vendedorFiltro, setVendedorFiltro] = useState<string>('todos');
   const [tipoSaidaFiltro, setTipoSaidaFiltro] = useState<string>('todos');
@@ -111,7 +115,13 @@ export const VendasTable: React.FC<VendasTableProps> = ({
       (venda.clienteInfluenciador && venda.clienteInfluenciador.toLowerCase().includes(busca.toLowerCase())) ||
       (venda.contato && venda.contato.toLowerCase().includes(busca.toLowerCase()));
 
-    const matchVendedor = vendedorFiltro === 'todos' || venda.vendedor === vendedorFiltro;
+    let matchVendedor = true;
+    if (currentUser && currentUser.tipo === 'Vendedor') {
+      matchVendedor = (venda.vendedor || '').trim().toLowerCase() === (currentUser.nome || '').trim().toLowerCase();
+    } else {
+      matchVendedor = vendedorFiltro === 'todos' || venda.vendedor === vendedorFiltro;
+    }
+
     const matchTipo = tipoSaidaFiltro === 'todos' || venda.tipoSaida === tipoSaidaFiltro;
     const matchStatus =
       statusComissaoFiltro === 'todos' ||
@@ -783,19 +793,27 @@ export const VendasTable: React.FC<VendasTableProps> = ({
         {/* Filtros Dropdown */}
         <div className="flex flex-wrap items-center gap-3">
           
-          <div className="flex items-center space-x-1.5 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <select
-              value={vendedorFiltro}
-              onChange={(e) => setVendedorFiltro(e.target.value)}
-              className="bg-transparent text-xs text-slate-200 focus:outline-none"
-            >
-              <option value="todos" className="bg-slate-900">Todos os Vendedores</option>
-              {vendedoresUnicos.map(v => (
-                <option key={v} value={v} className="bg-slate-900">{v}</option>
-              ))}
-            </select>
-          </div>
+          {currentUser && currentUser.tipo === 'Vendedor' ? (
+            <div className="flex items-center space-x-1.5 bg-slate-950 border border-amber-500/30 rounded-xl px-3 py-1.5 text-xs text-amber-300 font-semibold">
+              <Filter className="w-3.5 h-3.5 text-amber-400" />
+              <span>Vendedor: {currentUser.nome}</span>
+              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30 ml-1">Fixo</span>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-1.5 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5">
+              <Filter className="w-3.5 h-3.5 text-slate-400" />
+              <select
+                value={vendedorFiltro}
+                onChange={(e) => setVendedorFiltro(e.target.value)}
+                className="bg-transparent text-xs text-slate-200 focus:outline-none"
+              >
+                <option value="todos" className="bg-slate-900">Todos os Vendedores</option>
+                {vendedoresUnicos.map(v => (
+                  <option key={v} value={v} className="bg-slate-900">{v}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex items-center space-x-1.5 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5">
             <select
@@ -989,27 +1007,31 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                               <FileText className="w-4 h-4" />
                             </button>
 
-                            {/* Botão Editar */}
-                            <button
-                              onClick={() => handleIniciarEdicao(pedido)}
-                              className={`p-1.5 rounded-lg border transition-all ${
-                                isEmEdicao
-                                  ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold'
-                                  : 'bg-slate-950 hover:bg-sky-500/20 text-sky-400 border-slate-800 hover:border-sky-500/40'
-                              }`}
-                              title="Editar Pedido e Itens Inline"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
+                            {/* Botão Editar (Apenas Master) */}
+                            {isMaster && (
+                              <button
+                                onClick={() => handleIniciarEdicao(pedido)}
+                                className={`p-1.5 rounded-lg border transition-all ${
+                                  isEmEdicao
+                                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold'
+                                    : 'bg-slate-950 hover:bg-sky-500/20 text-sky-400 border-slate-800 hover:border-sky-500/40'
+                                }`}
+                                title="Editar Pedido e Itens Inline"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            )}
 
-                            {/* Botão Deletar */}
-                            <button
-                              onClick={() => setExcluindoIdSaida(pedido.idSaida)}
-                              className="p-1.5 bg-slate-950 hover:bg-rose-500/20 text-rose-400 border border-slate-800 hover:border-rose-500/40 rounded-lg transition-all"
-                              title="Excluir Pedido Permanentemente"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {/* Botão Deletar (Apenas Master) */}
+                            {isMaster && (
+                              <button
+                                onClick={() => setExcluindoIdSaida(pedido.idSaida)}
+                                className="p-1.5 bg-slate-950 hover:bg-rose-500/20 text-rose-400 border border-slate-800 hover:border-rose-500/40 rounded-lg transition-all"
+                                title="Excluir Pedido Permanentemente"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1333,7 +1355,7 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                   
                                   <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 space-y-1">
                                     <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-semibold">
-                                      <User className="w-3 h-3 text-amber-400" />
+                                      <UserIcon className="w-3 h-3 text-amber-400" />
                                       <span>Cliente / Influenciador:</span>
                                     </div>
                                     <p className="text-xs font-medium text-slate-200">

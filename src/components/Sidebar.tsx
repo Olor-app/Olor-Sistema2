@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Logo } from './Logo';
+import { User } from '../types';
 import { 
   BarChart3, 
   Table, 
@@ -14,10 +15,14 @@ import {
   Sparkles,
   ChevronRight,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Users,
+  LogOut,
+  ShieldCheck,
+  UserCheck
 } from 'lucide-react';
 
-export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'tabela-precos' | 'apps-script';
+export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'tabela-precos' | 'gestao-usuarios' | 'apps-script';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -29,6 +34,8 @@ interface SidebarProps {
   loading?: boolean;
   isCollapsed: boolean;
   setIsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  currentUser: User | null;
+  onLogout: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -41,49 +48,66 @@ export const Sidebar: React.FC<SidebarProps> = ({
   loading = false,
   isCollapsed,
   setIsCollapsed,
+  currentUser,
+  onLogout,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Itens na ordem exata solicitada:
-  // 1º: Dashboard
-  // 2º: BD_Vendas
-  // 3º: Nova Saída
-  // 4º: Matriz de Preços
-  // 5º: Código Apps Script
-  const menuItems = [
+  const isMaster = currentUser?.tipo === 'Master';
+
+  // Itens do menu com filtro de permissões (RBAC)
+  const allMenuItems = [
     {
       id: 'dashboard' as TabType,
       label: 'Dashboard',
       description: 'Resultados e Indicadores',
       icon: BarChart3,
       badge: 'Principal',
-      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+      allowedRoles: ['Master', 'Vendedor']
     },
     {
       id: 'historico' as TabType,
       label: 'BD_Vendas',
-      description: 'Histórico Completo de Saídas',
+      description: isMaster ? 'Histórico Geral de Saídas' : 'Minhas Vendas Lançadas',
       icon: Table,
+      allowedRoles: ['Master', 'Vendedor']
     },
     {
       id: 'nova-venda' as TabType,
       label: 'Nova Saída',
       description: 'Lançamento de Pedidos',
       icon: PlusCircle,
+      allowedRoles: ['Master']
     },
     {
       id: 'tabela-precos' as TabType,
       label: 'Preços & Listas',
       description: 'Matriz de Produtos & Preços',
       icon: DollarSign,
+      allowedRoles: ['Master']
+    },
+    {
+      id: 'gestao-usuarios' as TabType,
+      label: 'Gestão de Usuários',
+      description: 'Controle de Acesso RBAC',
+      icon: Users,
+      badge: 'Master',
+      badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+      allowedRoles: ['Master']
     },
     {
       id: 'apps-script' as TabType,
       label: 'Código Apps Script',
-      description: 'Configuração do Google Sheets',
+      description: 'Configuração da Planilha',
       icon: Code2,
+      allowedRoles: ['Master']
     },
   ];
+
+  const menuItems = allMenuItems.filter(item => 
+    !currentUser || item.allowedRoles.includes(currentUser.tipo)
+  );
 
   const handleSelectTab = (id: TabType) => {
     setActiveTab(id);
@@ -177,12 +201,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <h1 className="font-cinzel text-2xl font-extrabold tracking-wider bg-gradient-to-r from-amber-100 via-amber-300 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_2px_10px_rgba(212,175,55,0.2)]">
                   OLOR LUZ
                 </h1>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="h-0.5 w-6 bg-gradient-to-r from-amber-500 to-transparent rounded-full" />
-                  <span className="text-[9px] font-semibold tracking-[0.25em] text-amber-300 uppercase">
-                    SIG & DASHBOARD
-                  </span>
-                </div>
               </div>
             )}
           </div>
@@ -260,50 +278,106 @@ export const Sidebar: React.FC<SidebarProps> = ({
             })}
           </div>
 
-          {/* RODAPÉ DA SIDEBAR: STATUS DA CONEXÃO DO GOOGLE SHEETS */}
+          {/* RODAPÉ DA SIDEBAR: USUÁRIO LOGADO + CONEXÃO SHEETS */}
           <div className="p-3 border-t border-slate-900 bg-slate-950/90 space-y-2">
             
-            {!isCollapsed ? (
-              <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                    <Database className="w-3.5 h-3.5 text-amber-400" />
-                    Conexão Sheets
-                  </span>
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      apiUrl && !isMock ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
-                    }`}
-                  />
+            {/* CARD DO USUÁRIO LOGADO */}
+            {currentUser && (
+              !isCollapsed ? (
+                <div className="bg-slate-900/90 border border-amber-500/20 rounded-xl p-3 flex items-center justify-between gap-2 shadow-sm">
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                      isMaster 
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                        : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                    }`}>
+                      {currentUser.nome.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="truncate">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-200 truncate">
+                          {currentUser.nome}
+                        </span>
+                        {isMaster ? (
+                          <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" title="Perfil Master" />
+                        ) : (
+                          <UserCheck className="w-3.5 h-3.5 text-indigo-400 shrink-0" title="Perfil Vendedor" />
+                        )}
+                      </div>
+                      <span className={`text-[10px] font-medium block truncate ${
+                        isMaster ? 'text-amber-400 font-semibold' : 'text-slate-400'
+                      }`}>
+                        {currentUser.tipo} • {currentUser.email}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={onLogout}
+                    className="p-1.5 bg-slate-800 hover:bg-rose-950/50 text-slate-400 hover:text-rose-300 border border-slate-700/80 hover:border-rose-800 rounded-lg transition-colors shrink-0"
+                    title="Sair do Sistema"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
                 </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 py-1">
+                  <button
+                    onClick={onLogout}
+                    className="p-2 bg-slate-900 hover:bg-rose-950/50 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800 rounded-xl transition-colors"
+                    title={`Sair de ${currentUser.nome} (${currentUser.tipo})`}
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              )
+            )}
+            
+            {!isCollapsed ? (
+              isMaster && (
+                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                      <Database className="w-3.5 h-3.5 text-amber-400" />
+                      Conexão Sheets
+                    </span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        apiUrl && !isMock ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                      }`}
+                    />
+                  </div>
 
-                <p className="text-[11px] text-slate-300 font-medium truncate">
-                  {apiUrl && !isMock ? 'Google Planilhas OK' : 'Modo Local (Demo)'}
-                </p>
+                  <p className="text-[11px] text-slate-300 font-medium truncate">
+                    {apiUrl && !isMock ? 'Google Planilhas OK' : 'Modo Local (Demo)'}
+                  </p>
 
-                <button
-                  onClick={onOpenSettings}
-                  className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                  <span>Configurar URL API</span>
-                </button>
-              </div>
+                  <button
+                    onClick={onOpenSettings}
+                    className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>Configurar URL API</span>
+                  </button>
+                </div>
+              )
             ) : (
-              <div className="flex flex-col items-center gap-2 py-1">
-                <button
-                  onClick={onOpenSettings}
-                  className="p-2 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800 rounded-xl transition-colors relative"
-                  title={apiUrl && !isMock ? "Google Planilhas Conectado - Configurar API" : "Modo Local - Configurar API"}
-                >
-                  <Settings className="w-4 h-4" />
-                  <span
-                    className={`absolute top-1 right-1 w-2 h-2 rounded-full ${
-                      apiUrl && !isMock ? 'bg-emerald-400' : 'bg-amber-400'
-                    }`}
-                  />
-                </button>
-              </div>
+              isMaster && (
+                <div className="flex flex-col items-center gap-2 py-1">
+                  <button
+                    onClick={onOpenSettings}
+                    className="p-2 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800 rounded-xl transition-colors relative"
+                    title={apiUrl && !isMock ? "Google Planilhas Conectado - Configurar API" : "Modo Local - Configurar API"}
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span
+                      className={`absolute top-1 right-1 w-2 h-2 rounded-full ${
+                        apiUrl && !isMock ? 'bg-emerald-400' : 'bg-amber-400'
+                      }`}
+                    />
+                  </button>
+                </div>
+              )
             )}
 
             {!isCollapsed && (

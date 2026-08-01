@@ -3,15 +3,17 @@ import { Copy, Check, FileCode, ExternalLink, HelpCircle, Server, Rocket, Shield
 import { getAppsScriptUrl, testarConexaoApi } from '../services/api';
 
 const APPS_SCRIPT_CODE = `/**
- * SIG Olor Luz - API Web App para Google Planilhas
+ * SIG Olor Luz - API Web App para Google Planilhas com RBAC e Autenticação
  * 
  * Estrutura da Planilha Olor_Luz_Sistema:
- * - Aba "Listas": Cabeçalhos na Linha 1 (VENDEDORES, PRODUTO, EMBALAGEM, TABELA DE PREÇO, TIPO SAIDA, STATUS COMISSÃO)
- * - Aba "BD_Vendas": Colunas A a R (ID, Data, ID_Saida, Vendedor, Tabela de Preço, Tipo Saida, Produto, Embalagem_VENDA, Quantidade, Desconto/Adicional, Preço uni, Preço de Venda, R$ de Comissão, Status Comissão, Dia, Mes, Ano, OBS)
+ * - Aba "Listas": Cabeçalhos VENDEDORES, PRODUTO, EMBALAGEM, TABELA DE PREÇO, TIPO SAIDA, STATUS COMISSÃO
+ * - Aba "BD_Vendas": Colunas A a T (ID, Data, ID_Saida, Vendedor, Tabela de Preço, Tipo Saida, Produto, Embalagem_VENDA, Quantidade, Desconto/Adicional, Preço uni, Preço de Venda, R$ de Comissão, Status Comissão, Dia, Mes, Ano, OBS, Cliente/Influenciador, Contato)
+ * - Aba "Usuários": Coluna A (Nome), Coluna B (Tipo: Master/Vendedor), Coluna C (Email), Coluna D (Senha)
  */
 
 var ABA_LISTAS = "Listas";
 var ABA_BD_VENDAS = "BD_Vendas";
+var ABA_USUARIOS = "Usuários";
 
 function removerVendasPorIdSaida(sheet, idSaida) {
   var data = sheet.getDataRange().getValues();
@@ -20,16 +22,14 @@ function removerVendasPorIdSaida(sheet, idSaida) {
   var idSaidaNorm = String(idSaida || "").trim().toLowerCase();
   if (!idSaidaNorm) return 0;
 
-  // Localiza dinamicamente a coluna do ID_Saida ou ID no cabeçalho (Linha 1)
   var headers = data[0].map(function(h) { return String(h || "").trim().toLowerCase(); });
   var idxIdSaida = headers.indexOf("id_saida");
   if (idxIdSaida === -1) idxIdSaida = headers.findIndex(function(h) { return h.includes("saida"); });
-  if (idxIdSaida === -1) idxIdSaida = 2; // Fallback para Coluna C (índice 2)
+  if (idxIdSaida === -1) idxIdSaida = 2; // Coluna C (índice 2)
 
   var idxId = headers.indexOf("id");
-  if (idxId === -1) idxId = 0; // Fallback para Coluna A (índice 0)
+  if (idxId === -1) idxId = 0; // Coluna A (índice 0)
 
-  // Deleta de baixo para cima para preservar a integridade dos índices de linha
   for (var i = data.length - 1; i >= 1; i--) {
     var valColSaida = String(data[i][idxIdSaida] || "").trim().toLowerCase();
     var valColId = String(data[i][idxId] || "").trim().toLowerCase();
@@ -41,24 +41,150 @@ function removerVendasPorIdSaida(sheet, idSaida) {
   return removidos;
 }
 
+function criarAbaUsuariosSeNaoExistir(ss) {
+  var sheet = ss.getSheetByName(ABA_USUARIOS);
+  if (!sheet) {
+    sheet = ss.insertSheet(ABA_USUARIOS);
+    sheet.appendRow(["Nome", "Tipo", "Email", "Senha"]);
+    sheet.appendRow(["Master Olor Luz", "Master", "master@olorluz.com.br", "123"]);
+    sheet.appendRow(["Carlos Silva", "Vendedor", "vendedor@olorluz.com.br", "123"]);
+    sheet.appendRow(["Ana Souza", "Vendedor", "ana@olorluz.com.br", "123"]);
+  }
+  return sheet;
+}
+
+function handleLogin(ss, email, senha) {
+  var sheet = criarAbaUsuariosSeNaoExistir(ss);
+  var data = sheet.getDataRange().getValues();
+  var emailNorm = String(email || "").trim().toLowerCase();
+  var senhaNorm = String(senha || "").trim();
+
+  for (var i = 1; i < data.length; i++) {
+    var rowEmail = String(data[i][2] || "").trim().toLowerCase();
+    var rowSenha = String(data[i][3] || "").trim();
+
+    if (rowEmail === emailNorm && rowSenha === senhaNorm) {
+      return {
+        status: "success",
+        user: {
+          nome: String(data[i][0] || "").trim(),
+          tipo: String(data[i][1] || "Vendedor").trim(),
+          email: rowEmail
+        }
+      };
+    }
+  }
+
+  return { status: "error", message: "E-mail ou senha incorretos." };
+}
+
+function handleGetUsuarios(ss) {
+  var sheet = criarAbaUsuariosSeNaoExistir(ss);
+  var data = sheet.getDataRange().getValues();
+  var lista = [];
+
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] || data[i][2]) {
+      lista.push({
+        nome: String(data[i][0] || "").trim(),
+        tipo: String(data[i][1] || "Vendedor").trim(),
+        email: String(data[i][2] || "").trim(),
+        senha: String(data[i][3] || "").trim()
+      });
+    }
+  }
+
+  return { status: "success", usuarios: lista };
+}
+
+function handleCrudUsuario(ss, subAction, usuarioData, emailOriginal) {
+  var sheet = criarAbaUsuariosSeNaoExistir(ss);
+  var data = sheet.getDataRange().getValues();
+  var targetEmail = String(emailOriginal || (usuarioData && usuarioData.email) || "").trim().toLowerCase();
+
+  var subActionNorm = String(subAction || "").trim().toLowerCase();
+
+  if (subActionNorm === "criar") {
+    sheet.appendRow([
+      usuarioData.nome || "",
+      usuarioData.tipo || "Vendedor",
+      String(usuarioData.email || "").trim().toLowerCase(),
+      String(usuarioData.senha || "")
+    ]);
+    return { status: "success", message: "Usuário cadastrado com sucesso!" };
+  }
+  else if (subActionNorm === "editar") {
+    for (var r = 1; r < data.length; r++) {
+      var rowEmail = String(data[r][2] || "").trim().toLowerCase();
+      if (rowEmail === targetEmail) {
+        sheet.getRange(r + 1, 1, 1, 4).setValues([[
+          usuarioData.nome || data[r][0],
+          usuarioData.tipo || data[r][1],
+          String(usuarioData.email || data[r][2]).trim().toLowerCase(),
+          usuarioData.senha !== undefined ? usuarioData.senha : data[r][3]
+        ]]);
+        return { status: "success", message: "Usuário atualizado com sucesso!" };
+      }
+    }
+    return { status: "error", message: "Usuário não encontrado para edição." };
+  }
+  else if (subActionNorm === "deletar") {
+    for (var r = data.length - 1; r >= 1; r--) {
+      var rowEmail = String(data[r][2] || "").trim().toLowerCase();
+      if (rowEmail === targetEmail) {
+        sheet.deleteRow(r + 1);
+        return { status: "success", message: "Usuário excluído com sucesso!" };
+      }
+    }
+    return { status: "error", message: "Usuário não encontrado para exclusão." };
+  }
+
+  return { status: "error", message: "Ação CRUD de usuário inválida." };
+}
+
 function doGet(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.getActive();
     if (!ss) {
       var sheetId = e && e.parameter && e.parameter.sheetId;
-      if (sheetId) {
-        ss = SpreadsheetApp.openById(sheetId);
-      } else {
-        throw new Error("Planilha ativa não encontrada. Abra a planilha Olor_Luz_Sistema e vá em Extensões > Apps Script.");
-      }
+      if (sheetId) ss = SpreadsheetApp.openById(sheetId);
+      else throw new Error("Planilha não encontrada.");
     }
 
-    var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "all";
+    var params = (e && e.parameter) ? e.parameter : {};
+    var action = params.action || "all";
 
-    // Trata exclusão via GET
+    var payloadData = null;
+    if (params.payload) {
+      try { payloadData = JSON.parse(params.payload); } catch(err) { payloadData = params; }
+    } else {
+      payloadData = params;
+    }
+
+    // 1. ACTION: LOGIN
+    if (action === "login") {
+      var email = payloadData.email || params.email;
+      var senha = payloadData.senha || params.senha;
+      return criarRespostaJSON(handleLogin(ss, email, senha));
+    }
+
+    // 2. ACTION: GET_USUARIOS
+    if (action === "get_usuarios") {
+      return criarRespostaJSON(handleGetUsuarios(ss));
+    }
+
+    // 3. ACTION: CRUD_USUARIO
+    if (action === "crud_usuario") {
+      var subAction = payloadData.subAction || params.subAction || "criar";
+      var uData = payloadData.usuario || payloadData;
+      var origEmail = payloadData.emailOriginal || params.emailOriginal;
+      return criarRespostaJSON(handleCrudUsuario(ss, subAction, uData, origEmail));
+    }
+
+    // 4. ACTION: DELETE
     if (action === "delete" || action === "excluir") {
       var sheetVendas = ss.getSheetByName(ABA_BD_VENDAS);
-      var idSaidaDel = (e && e.parameter) ? (e.parameter.idSaida || e.parameter.id_saida) : null;
+      var idSaidaDel = payloadData.idSaida || params.idSaida;
       if (sheetVendas && idSaidaDel) {
         var count = removerVendasPorIdSaida(sheetVendas, idSaidaDel);
         return criarRespostaJSON({
@@ -69,74 +195,8 @@ function doGet(e) {
       }
     }
 
-    // Trata atualização via GET
-    if (action === "update" || action === "editar") {
-      var sheetVendas = ss.getSheetByName(ABA_BD_VENDAS);
-      if (!sheetVendas) {
-        sheetVendas = ss.insertSheet(ABA_BD_VENDAS);
-        inicializarAbaBDVendas(sheetVendas);
-      }
-      var payloadRaw = e.parameter.payload;
-      var dataObj = {};
-      if (payloadRaw) {
-        try { dataObj = JSON.parse(payloadRaw); } catch(pErr) { dataObj = e.parameter; }
-      } else {
-        dataObj = e.parameter;
-      }
-      var idSaidaUpd = dataObj.idSaida || dataObj.id_saida || e.parameter.idSaida;
-      if (idSaidaUpd) {
-        removerVendasPorIdSaida(sheetVendas, idSaidaUpd);
-      }
-      var vendasNovas = Array.isArray(dataObj.vendas) ? dataObj.vendas : (Array.isArray(dataObj) ? dataObj : [dataObj]);
-      var salvas = [];
-      vendasNovas.forEach(function(v) {
-        if (!v.idSaida && idSaidaUpd) v.idSaida = idSaidaUpd;
-        var novaLinha = processarERegistrarVenda(sheetVendas, v);
-        salvas.push(novaLinha);
-      });
-      return criarRespostaJSON({
-        status: "success",
-        message: "Pedido " + idSaidaUpd + " (" + salvas.length + " item/itens) atualizado com sucesso!",
-        registros: salvas
-      });
-    }
-
-    // Trata salvamento via GET ou quando o redirecionamento 302 do POST é convertido em GET
-    if (action === "salvar" || (e && e.parameter && (e.parameter.payload || e.parameter.vendedor))) {
-      var sheetVendas = ss.getSheetByName(ABA_BD_VENDAS);
-      if (!sheetVendas) {
-        sheetVendas = ss.insertSheet(ABA_BD_VENDAS);
-        inicializarAbaBDVendas(sheetVendas);
-      }
-
-      var payloadRaw = e.parameter.payload || e.parameter.venda;
-      var vendaObj = {};
-      if (payloadRaw) {
-        try {
-          vendaObj = JSON.parse(payloadRaw);
-        } catch(pErr) {
-          vendaObj = e.parameter;
-        }
-      } else {
-        vendaObj = e.parameter;
-      }
-
-      var salvas = [];
-      var vendasParaInserir = Array.isArray(vendaObj) ? vendaObj : (vendaObj.vendas || [vendaObj]);
-      vendasParaInserir.forEach(function(v) {
-        var novaLinha = processarERegistrarVenda(sheetVendas, v);
-        salvas.push(novaLinha);
-      });
-
-      return criarRespostaJSON({
-        status: "success",
-        message: salvas.length + " registro(s) inserido(s) com sucesso na aba BD_Vendas!",
-        registros: salvas
-      });
-    }
-
+    // 5. DEFAULT: RETORNA LISTAS E VENDAS
     var responseData = {};
-
     var sheetListas = ss.getSheetByName(ABA_LISTAS);
     if (!sheetListas) {
       sheetListas = ss.insertSheet(ABA_LISTAS);
@@ -146,27 +206,16 @@ function doGet(e) {
     var listasData = extrairDadosListas(sheetListas);
     responseData.listas = listasData.selects;
     responseData.dadosBrutos = listasData.dadosBrutos;
-
-    // Chaves de nível superior para compatibilidade direta com o formato do Apps Script
     responseData.vendedores = listasData.selects.vendedores;
     responseData.produtos = listasData.selects.produtos;
-    responseData.produto = listasData.selects.produtos;
     responseData.embalagens = listasData.selects.embalagens;
-    responseData.embalagem = listasData.selects.embalagens;
     responseData.tabelasPreco = listasData.selects.tabelasPreco;
-    responseData.tabelaPreco = listasData.selects.tabelasPreco;
     responseData.tiposSaida = listasData.selects.tiposSaida;
-    responseData.tipoSaida = listasData.selects.tiposSaida;
     responseData.statusComissao = listasData.selects.statusComissao;
 
-    if (action === "all" || action === "vendas") {
-      var sheetVendas = ss.getSheetByName(ABA_BD_VENDAS);
-      if (sheetVendas) {
-        responseData.vendas = extrairVendas(sheetVendas);
-      } else {
-        responseData.vendas = [];
-      }
-    }
+    var sheetVendas = ss.getSheetByName(ABA_BD_VENDAS);
+    if (sheetVendas) responseData.vendas = extrairVendas(sheetVendas);
+    else responseData.vendas = [];
 
     responseData.status = "success";
     responseData.timestamp = new Date().toISOString();
@@ -174,11 +223,7 @@ function doGet(e) {
     return criarRespostaJSON(responseData);
 
   } catch (error) {
-    return criarRespostaJSON({
-      status: "error",
-      message: error.toString(),
-      stack: error.stack
-    });
+    return criarRespostaJSON({ status: "error", message: error.toString() });
   }
 }
 
@@ -188,99 +233,88 @@ function doPost(e) {
     lock.tryLock(10000);
 
     var ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.getActive();
+    var contents = null;
+
+    if (e && e.postData && e.postData.contents) contents = e.postData.contents;
+    else if (e && e.parameter && e.parameter.payload) contents = e.parameter.payload;
+    else if (e && e.parameter) contents = JSON.stringify(e.parameter);
+
+    var data = {};
+    if (contents) {
+      try { data = JSON.parse(contents); } catch(err) { data = e ? e.parameter : {}; }
+    } else {
+      data = e ? e.parameter : {};
+    }
+
+    var action = data.action || (e && e.parameter && e.parameter.action) || "create";
+
+    if (action === "login") {
+      lock.releaseLock();
+      return criarRespostaJSON(handleLogin(ss, data.email, data.senha));
+    }
+
+    if (action === "get_usuarios") {
+      lock.releaseLock();
+      return criarRespostaJSON(handleGetUsuarios(ss));
+    }
+
+    if (action === "crud_usuario") {
+      lock.releaseLock();
+      var uData = data.usuario || data;
+      return criarRespostaJSON(handleCrudUsuario(ss, data.subAction, uData, data.emailOriginal));
+    }
+
     var sheetVendas = ss.getSheetByName(ABA_BD_VENDAS);
     if (!sheetVendas) {
       sheetVendas = ss.insertSheet(ABA_BD_VENDAS);
       inicializarAbaBDVendas(sheetVendas);
     }
 
-    var contents = null;
-    if (e && e.postData && e.postData.contents) {
-      contents = e.postData.contents;
-    } else if (e && e.parameter && e.parameter.payload) {
-      contents = e.parameter.payload;
-    } else if (e && e.parameter) {
-      contents = JSON.stringify(e.parameter);
-    }
-
-    if (!contents) {
-      throw new Error("Payload de dados vazio no POST.");
-    }
-
-    var data;
-    try {
-      data = JSON.parse(contents);
-    } catch(pErr) {
-      data = e.parameter;
-    }
-
-    var action = data.action || (e && e.parameter && e.parameter.action) || "create";
-
-    // 1. ROTA DE EXCLUSÃO (DELETE)
     if (action === "delete" || action === "excluir") {
-      var idSaidaDel = data.idSaida || data.id_saida || (e && e.parameter && e.parameter.idSaida);
-      if (!idSaidaDel) throw new Error("ID_Saida não informado para exclusão.");
-      
+      var idSaidaDel = data.idSaida || data.id_saida;
       var countDel = removerVendasPorIdSaida(sheetVendas, idSaidaDel);
       lock.releaseLock();
-      
       return criarRespostaJSON({
         status: "success",
-        message: "Pedido " + idSaidaDel + " (" + countDel + " item/itens) excluído com sucesso da planilha!",
+        message: "Pedido " + idSaidaDel + " (" + countDel + " item/itens) excluído!",
         removidos: countDel
       });
     }
 
-    // 2. ROTA DE ATUALIZAÇÃO (UPDATE)
     if (action === "update" || action === "editar") {
-      var idSaidaUpd = data.idSaida || data.id_saida || (e && e.parameter && e.parameter.idSaida);
-      if (!idSaidaUpd) throw new Error("ID_Saida não informado para atualização.");
-      
-      // Remove linhas antigas do mesmo ID_Saida
+      var idSaidaUpd = data.idSaida || data.id_saida;
       removerVendasPorIdSaida(sheetVendas, idSaidaUpd);
-      
-      // Insere os novos itens atualizados
+
       var vendasNovas = Array.isArray(data.vendas) ? data.vendas : (Array.isArray(data) ? data : [data]);
       var salvasUpd = [];
-      
       vendasNovas.forEach(function(v) {
         if (!v.idSaida) v.idSaida = idSaidaUpd;
-        var novaLinha = processarERegistrarVenda(sheetVendas, v);
-        salvasUpd.push(novaLinha);
+        salvasUpd.push(processarERegistrarVenda(sheetVendas, v));
       });
-      
+
       lock.releaseLock();
-      
       return criarRespostaJSON({
         status: "success",
-        message: "Pedido " + idSaidaUpd + " (" + salvasUpd.length + " item/itens) atualizado com sucesso!",
+        message: "Pedido " + idSaidaUpd + " (" + salvasUpd.length + " item/itens) atualizado!",
         registros: salvasUpd
       });
     }
 
-    // 3. ROTA DE CRIAÇÃO PADRÃO (CREATE / SALVAR)
     var vendasParaInserir = Array.isArray(data) ? data : (data.vendas || [data]);
     var salvas = [];
-
     vendasParaInserir.forEach(function(venda) {
-      var novaLinha = processarERegistrarVenda(sheetVendas, venda);
-      salvas.push(novaLinha);
+      salvas.push(processarERegistrarVenda(sheetVendas, venda));
     });
 
     lock.releaseLock();
-
     return criarRespostaJSON({
       status: "success",
-      message: salvas.length + " registro(s) inserido(s) com sucesso na aba BD_Vendas!",
+      message: salvas.length + " registro(s) inserido(s)!",
       registros: salvas
     });
 
   } catch (error) {
-    return criarRespostaJSON({
-      status: "error",
-      message: error.toString(),
-      stack: error.stack
-    });
+    return criarRespostaJSON({ status: "error", message: error.toString() });
   }
 }
 
@@ -338,35 +372,13 @@ function processarERegistrarVenda(sheet, venda) {
     statusComissao = "";
   }
 
-  if (venda.precoVenda !== undefined && !isNaN(Number(venda.precoVenda))) {
-    precoVenda = Number(venda.precoVenda);
-  }
-  if (venda.comissao !== undefined && !isNaN(Number(venda.comissao)) && tipoSaidaNorm === "venda" && !isOlorLuz) {
-    comissao = Number(venda.comissao);
-  }
+  if (venda.precoVenda !== undefined && !isNaN(Number(venda.precoVenda))) precoVenda = Number(venda.precoVenda);
+  if (venda.comissao !== undefined && !isNaN(Number(venda.comissao)) && tipoSaidaNorm === "venda" && !isOlorLuz) comissao = Number(venda.comissao);
 
-  // 20 colunas estritas
   var row = [
-    id,                   // Coluna A: ID
-    dataFormatada,        // Coluna B: Data
-    idSaida,              // Coluna C: ID_Saida
-    vendedor,             // Coluna D: Vendedor
-    tabelaPreco,          // Coluna E: Tabela de Preço
-    tipoSaida,            // Coluna F: Tipo Saida
-    produto,              // Coluna G: Produto
-    embalagem,            // Coluna H: Embalagem_VENDA
-    quantidade,           // Coluna I: Quantidade
-    modificador,          // Coluna J: Desconto/Adicional
-    precoUni,             // Coluna K: Preço uni
-    precoVenda,           // Coluna L: Preço de Venda
-    comissao,             // Coluna M: R$ de Comissão
-    statusComissao,       // Coluna N: Status Comissão
-    dia,                  // Coluna O: Dia
-    mes,                  // Coluna P: Mês
-    ano,                  // Coluna Q: Ano
-    obs,                  // Coluna R: OBS
-    clienteInfluenciador, // Coluna S: Cliente/Influenciador
-    contato               // Coluna T: Contato
+    id, dataFormatada, idSaida, vendedor, tabelaPreco, tipoSaida,
+    produto, embalagem, quantidade, modificador, precoUni, precoVenda,
+    comissao, statusComissao, dia, mes, ano, obs, clienteInfluenciador, contato
   ];
 
   sheet.appendRow(row);
@@ -434,17 +446,16 @@ function extrairDadosListas(sheet) {
 
     for (var col = 0; col < headersOriginais.length; col++) {
       var headerName = headersOriginais[col] || ("Coluna_" + (col + 1));
-      var val = row[col];
-      itemBruto[headerName] = val;
+      itemBruto[headerName] = row[col];
     }
     dadosBrutos.push(itemBruto);
 
-    if (idxVendedor !== -1 && row[idxVendedor] !== undefined && row[idxVendedor] !== "") vendedoresSet[String(row[idxVendedor]).trim()] = true;
-    if (idxProduto !== -1 && row[idxProduto] !== undefined && row[idxProduto] !== "") produtosSet[String(row[idxProduto]).trim()] = true;
-    if (idxEmbalagem !== -1 && row[idxEmbalagem] !== undefined && row[idxEmbalagem] !== "") embalagensSet[String(row[idxEmbalagem]).trim()] = true;
-    if (idxTabelaPreco !== -1 && row[idxTabelaPreco] !== undefined && row[idxTabelaPreco] !== "") tabelasPrecoSet[String(row[idxTabelaPreco]).trim()] = true;
-    if (idxTipoSaida !== -1 && row[idxTipoSaida] !== undefined && row[idxTipoSaida] !== "") tiposSaidaSet[String(row[idxTipoSaida]).trim()] = true;
-    if (idxStatusComissao !== -1 && row[idxStatusComissao] !== undefined && row[idxStatusComissao] !== "") statusComissaoSet[String(row[idxStatusComissao]).trim()] = true;
+    if (idxVendedor !== -1 && row[idxVendedor]) vendedoresSet[String(row[idxVendedor]).trim()] = true;
+    if (idxProduto !== -1 && row[idxProduto]) produtosSet[String(row[idxProduto]).trim()] = true;
+    if (idxEmbalagem !== -1 && row[idxEmbalagem]) embalagensSet[String(row[idxEmbalagem]).trim()] = true;
+    if (idxTabelaPreco !== -1 && row[idxTabelaPreco]) tabelasPrecoSet[String(row[idxTabelaPreco]).trim()] = true;
+    if (idxTipoSaida !== -1 && row[idxTipoSaida]) tiposSaidaSet[String(row[idxTipoSaida]).trim()] = true;
+    if (idxStatusComissao !== -1 && row[idxStatusComissao]) statusComissaoSet[String(row[idxStatusComissao]).trim()] = true;
   }
 
   var tiposSaidaList = Object.keys(tiposSaidaSet);
@@ -499,7 +510,6 @@ function extrairVendas(sheet) {
     if (!row[0] && !row[1] && !row[3]) continue;
 
     var temColTabela = idxTabela !== -1;
-
     var getVal = function(idx, default18, default17) {
       if (idx !== -1 && idx < row.length) return row[idx];
       var def = temColTabela ? default18 : default17;
@@ -508,11 +518,8 @@ function extrairVendas(sheet) {
 
     var dataVal = getVal(idxData, 1, 1);
     var dataStr = "";
-    if (dataVal instanceof Date) {
-      dataStr = Utilities.formatDate(dataVal, "GMT-3", "yyyy-MM-dd");
-    } else {
-      dataStr = String(dataVal || "");
-    }
+    if (dataVal instanceof Date) dataStr = Utilities.formatDate(dataVal, "GMT-3", "yyyy-MM-dd");
+    else dataStr = String(dataVal || "");
 
     vendas.push({
       id: String(getVal(idxId, 0, 0) || ""),
@@ -542,24 +549,20 @@ function extrairVendas(sheet) {
 }
 
 function criarRespostaJSON(objeto) {
-  return ContentService
-    .createTextOutput(JSON.stringify(objeto))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(objeto)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function inicializarAbaListas(sheet) {
-  var headers = ["VENDEDORES", "PRODUTO", "EMBALAGEM", "TABELA DE PREÇO", "TIPO SAIDA", "STATUS COMISSÃO"];
-  sheet.appendRow(headers);
+  sheet.appendRow(["VENDEDORES", "PRODUTO", "EMBALAGEM", "TABELA DE PREÇO", "TIPO SAIDA", "STATUS COMISSÃO"]);
 }
 
 function inicializarAbaBDVendas(sheet) {
-  var headers = [
+  sheet.appendRow([
     "ID", "Data", "ID_Saida", "Vendedor", "Tabela de Preço", "Tipo Saida", "Produto",
     "Embalagem_VENDA", "Quantidade", "Desconto/Adicional", "Preço uni",
     "Preço de Venda", "R$ de Comissão", "Status Comissão", "Dia", "Mes", "Ano", "OBS",
     "Cliente / Influenciador", "Contato"
-  ];
-  sheet.appendRow(headers);
+  ]);
 }`;
 
 export const AppsScriptView: React.FC = () => {

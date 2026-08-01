@@ -1,3 +1,12 @@
+export type UserTipo = 'Master' | 'Vendedor';
+
+export interface User {
+  nome: string;
+  tipo: UserTipo;
+  email: string;
+  senha?: string;
+}
+
 export type TipoSaida = 'Venda' | 'Consignado' | 'Amostra Grátis' | 'Mostruário' | 'Bonificação' | string;
 
 export type StatusComissao = 'Pendente' | 'Pago' | 'Cancelado' | string;

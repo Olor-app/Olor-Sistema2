@@ -459,7 +459,7 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
               className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow transition-all active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              + Novo Produto
+              Novo Produto
             </button>
           </div>
 
