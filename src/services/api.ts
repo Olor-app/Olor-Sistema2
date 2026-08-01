@@ -7,21 +7,15 @@ const STORAGE_KEY_CURRENT_USER = 'olor_luz_current_user';
 
 export const DEFAULT_USUARIOS: User[] = [
   {
+    nome: 'Gleydson',
+    tipo: 'Master',
+    email: 'gleydsonwsm@gmail.com',
+    senha: '753751'
+  },
+  {
     nome: 'Master Olor Luz',
     tipo: 'Master',
     email: 'master@olorluz.com.br',
-    senha: '123'
-  },
-  {
-    nome: 'Carlos Silva',
-    tipo: 'Vendedor',
-    email: 'vendedor@olorluz.com.br',
-    senha: '123'
-  },
-  {
-    nome: 'Ana Souza',
-    tipo: 'Vendedor',
-    email: 'ana@olorluz.com.br',
     senha: '123'
   }
 ];
@@ -55,7 +49,16 @@ export function logoutUser(): void {
 export function getLocalUsuarios(): User[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_LOCAL_USUARIOS);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const list: User[] = JSON.parse(raw);
+      // Garante que os usuários Master padrão continuem disponíveis caso não estejam na lista salva
+      DEFAULT_USUARIOS.forEach(defUser => {
+        if (!list.some(u => String(u.email || '').trim().toLowerCase() === defUser.email.toLowerCase())) {
+          list.unshift(defUser);
+        }
+      });
+      return list;
+    }
   } catch (e) {
     console.error('Erro ao ler usuários locais:', e);
   }
@@ -810,7 +813,164 @@ export function buscarPrecoUnitario(
 }
 
 /**
+ * Utilitário para normalizar o objeto Usuário vindo de qualquer formato (Google Sheets / API)
+ */
+function normalizarUsuario(raw: any): User | null {
+  if (!raw) return null;
+
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const getProp = (...keys: string[]) => {
+      for (const key of Object.keys(raw)) {
+        const keyNorm = key.toLowerCase().trim().replace(/[-_]/g, '');
+        for (const target of keys) {
+          if (keyNorm === target.toLowerCase().trim().replace(/[-_]/g, '')) {
+            const val = raw[key];
+            return val !== undefined && val !== null ? String(val).trim() : '';
+          }
+        }
+      }
+      return '';
+    };
+
+    const email = getProp('email', 'mail', 'usuario', 'login').toLowerCase();
+    const senha = getProp('senha', 'password', 'pass');
+    const nome = getProp('nome', 'name', 'vendedor');
+    const tipoRaw = getProp('tipo', 'role', 'perfil', 'nivel');
+
+    if (email || nome) {
+      return {
+        nome: nome || (email ? email.split('@')[0] : 'Usuário'),
+        tipo: tipoRaw ? (tipoRaw.charAt(0).toUpperCase() + tipoRaw.slice(1).toLowerCase()) as any : 'Vendedor',
+        email: email || '',
+        senha: senha || ''
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Utilitário para extrair usuários quando a planilha retorna matriz de linhas 2D
+ */
+function extrairUsuariosDeMatrix(matrix: any[][]): User[] {
+  if (!Array.isArray(matrix) || matrix.length === 0) return [];
+
+  const cabecalho = matrix[0].map((h: any) => String(h || '').toLowerCase().trim());
+  let idxEmail = cabecalho.findIndex((c: string) => c.includes('email') || c.includes('e-mail') || c.includes('login') || c.includes('usuario'));
+  let idxSenha = cabecalho.findIndex((c: string) => c.includes('senha') || c.includes('pass'));
+  let idxNome = cabecalho.findIndex((c: string) => c.includes('nome') || c.includes('vendedor') || c.includes('name'));
+  let idxTipo = cabecalho.findIndex((c: string) => c.includes('tipo') || c.includes('role') || c.includes('perfil'));
+
+  const usuarios: User[] = [];
+  const startRow = (idxEmail !== -1 || idxSenha !== -1 || idxNome !== -1) ? 1 : 0;
+
+  for (let r = startRow; r < matrix.length; r++) {
+    const row = matrix[r];
+    if (!Array.isArray(row)) continue;
+
+    let email = idxEmail !== -1 ? String(row[idxEmail] || '').trim().toLowerCase() : '';
+    let senha = idxSenha !== -1 ? String(row[idxSenha] || '').trim() : '';
+    let nome = idxNome !== -1 ? String(row[idxNome] || '').trim() : '';
+    let tipo = idxTipo !== -1 ? String(row[idxTipo] || '').trim() : 'Vendedor';
+
+    if (!email || !senha) {
+      row.forEach((cell: any) => {
+        const strCell = String(cell || '').trim();
+        if (strCell.includes('@') && !email) {
+          email = strCell.toLowerCase();
+        } else if (!senha && strCell.length > 0 && strCell.toLowerCase() !== email && strCell !== nome) {
+          senha = strCell;
+        }
+      });
+    }
+
+    if (email) {
+      usuarios.push({
+        nome: nome || email.split('@')[0],
+        tipo: tipo ? (tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase()) as any : 'Vendedor',
+        email,
+        senha
+      });
+    }
+  }
+
+  return usuarios;
+}
+
+/**
+ * Busca a lista de usuários cadastrados da API (action = 'get_usuarios' ou 'all')
+ */
+export async function getUsuariosApi(): Promise<User[]> {
+  const apiUrl = getAppsScriptUrl();
+
+  if (apiUrl) {
+    // A) Tenta action=get_usuarios
+    try {
+      const getUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=get_usuarios`;
+      const response = await fetch(getUrl, { method: 'GET', redirect: 'follow' });
+      if (response.ok) {
+        const json = await response.json();
+        let listaBruta: any[] = [];
+
+        if (Array.isArray(json.usuarios)) listaBruta = json.usuarios;
+        else if (Array.isArray(json.users)) listaBruta = json.users;
+        else if (Array.isArray(json.data)) listaBruta = json.data;
+
+        if (listaBruta.length > 0) {
+          if (Array.isArray(listaBruta[0])) {
+            const parsed = extrairUsuariosDeMatrix(listaBruta);
+            if (parsed.length > 0) {
+              saveLocalUsuarios(parsed);
+              return parsed;
+            }
+          } else {
+            const parsed = listaBruta.map(normalizarUsuario).filter((u): u is User => u !== null);
+            if (parsed.length > 0) {
+              saveLocalUsuarios(parsed);
+              return parsed;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[SIG Olor Luz] Erro ao carregar usuarios via action=get_usuarios:', err);
+    }
+
+    // B) Fallback para action=all se a planilha disponibilizar a lista de usuários junto
+    try {
+      const allUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=all`;
+      const responseAll = await fetch(allUrl, { method: 'GET', redirect: 'follow' });
+      if (responseAll.ok) {
+        const jsonAll = await responseAll.json();
+        const listaBruta = jsonAll.usuarios || jsonAll.users || jsonAll.dadosUsuarios;
+        if (Array.isArray(listaBruta) && listaBruta.length > 0) {
+          if (Array.isArray(listaBruta[0])) {
+            const parsed = extrairUsuariosDeMatrix(listaBruta);
+            if (parsed.length > 0) {
+              saveLocalUsuarios(parsed);
+              return parsed;
+            }
+          } else {
+            const parsed = listaBruta.map(normalizarUsuario).filter((u): u is User => u !== null);
+            if (parsed.length > 0) {
+              saveLocalUsuarios(parsed);
+              return parsed;
+            }
+          }
+        }
+      }
+    } catch (errAll) {
+      console.warn('[SIG Olor Luz] Erro ao carregar usuarios via action=all:', errAll);
+    }
+  }
+
+  return getLocalUsuarios();
+}
+
+/**
  * Realiza autenticação de usuário (action = 'login')
+ * Valida em tempo real com o banco de dados (Google Sheets) com garantia de compatibilidade de tipos.
  */
 export async function loginApi(email: string, senha: string): Promise<{
   success: boolean;
@@ -818,12 +978,85 @@ export async function loginApi(email: string, senha: string): Promise<{
   user?: User;
 }> {
   const emailClean = email.trim().toLowerCase();
-  const senhaClean = senha.trim();
+  const senhaClean = String(senha || '').trim();
 
-  // 1. FAST-PATH: Verificação instantânea se já existe nos usuários armazenados localmente (0ms)
+  const apiUrl = getAppsScriptUrl();
+
+  // 1. Tenta autenticação direta via action=login no Apps Script (se implementada)
+  if (apiUrl) {
+    try {
+      const loginUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=login&email=${encodeURIComponent(emailClean)}&senha=${encodeURIComponent(senhaClean)}`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const responseGet = await fetch(loginUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (responseGet.ok) {
+        const jsonGet = await responseGet.json();
+
+        if (jsonGet && jsonGet.status === 'success' && jsonGet.user) {
+          const userNorm = normalizarUsuario(jsonGet.user) || {
+            nome: String(jsonGet.user.nome || jsonGet.user.NOME || emailClean.split('@')[0]).trim(),
+            tipo: (jsonGet.user.tipo || jsonGet.user.TIPO || 'Vendedor') as any,
+            email: emailClean,
+            senha: senhaClean
+          };
+
+          const usuariosLocais = getLocalUsuarios().filter(u => String(u.email || '').trim().toLowerCase() !== emailClean);
+          usuariosLocais.push({ ...userNorm, senha: senhaClean });
+          saveLocalUsuarios(usuariosLocais);
+
+          return {
+            success: true,
+            user: userNorm
+          };
+        }
+      }
+    } catch (err: any) {
+      console.warn('[SIG Olor Luz] Consulta direta action=login falhou/timeout, consultando aba de Usuários:', err);
+    }
+
+    // 2. Tenta validação lendo o banco de dados da aba "Usuários" da planilha
+    try {
+      const usuariosPlanilha = await getUsuariosApi();
+      const userEncontrado = usuariosPlanilha.find(
+        u => String(u.email || '').trim().toLowerCase() === emailClean && String(u.senha || '').trim() === senhaClean
+      );
+
+      if (userEncontrado) {
+        const usuariosLocais = getLocalUsuarios().filter(u => String(u.email || '').trim().toLowerCase() !== emailClean);
+        usuariosLocais.push({
+          nome: userEncontrado.nome,
+          tipo: userEncontrado.tipo,
+          email: userEncontrado.email,
+          senha: senhaClean
+        });
+        saveLocalUsuarios(usuariosLocais);
+
+        return {
+          success: true,
+          user: {
+            nome: userEncontrado.nome,
+            tipo: userEncontrado.tipo,
+            email: userEncontrado.email
+          }
+        };
+      }
+    } catch (syncErr) {
+      console.warn('[SIG Olor Luz] Falha de conexão ao validar usuários da planilha:', syncErr);
+    }
+  }
+
+  // 3. FALLBACK MODO OFFLINE / USUÁRIOS LOCAIS E PADRÃO
   const usuariosLocais = getLocalUsuarios();
   const userLocal = usuariosLocais.find(
-    u => u.email.trim().toLowerCase() === emailClean && u.senha?.trim() === senhaClean
+    u => String(u.email || '').trim().toLowerCase() === emailClean && String(u.senha || '').trim() === senhaClean
   );
 
   if (userLocal) {
@@ -837,153 +1070,10 @@ export async function loginApi(email: string, senha: string): Promise<{
     };
   }
 
-  // 2. Consulta a API do Apps Script (Google Sheets)
-  const apiUrl = getAppsScriptUrl();
-  if (apiUrl) {
-    try {
-      const payload = JSON.stringify({ action: 'login', email: emailClean, senha: senhaClean });
-      const loginUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=login&email=${encodeURIComponent(emailClean)}&senha=${encodeURIComponent(senhaClean)}`;
-
-      // Timeout seguro de 15s para a latência normal do Google Apps Script
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-      // Tenta via POST primeiro
-      try {
-        const responsePost = await fetch(loginUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: payload,
-          redirect: 'follow',
-          signal: controller.signal
-        });
-
-        if (responsePost.ok) {
-          const jsonPost = await responsePost.json();
-          if (jsonPost && jsonPost.status === 'success' && jsonPost.user) {
-            clearTimeout(timeoutId);
-            const novosLocais = usuariosLocais.filter(u => u.email.trim().toLowerCase() !== emailClean);
-            novosLocais.push({
-              nome: jsonPost.user.nome,
-              tipo: jsonPost.user.tipo,
-              email: jsonPost.user.email,
-              senha: senhaClean
-            });
-            saveLocalUsuarios(novosLocais);
-
-            return {
-              success: true,
-              user: {
-                nome: jsonPost.user.nome,
-                tipo: jsonPost.user.tipo,
-                email: jsonPost.user.email
-              }
-            };
-          } else if (jsonPost && jsonPost.status === 'error' && jsonPost.message && !jsonPost.message.includes('Ação não')) {
-            clearTimeout(timeoutId);
-            return { success: false, message: jsonPost.message || 'E-mail ou senha incorretos.' };
-          }
-        }
-      } catch (postErr) {
-        console.warn('[SIG Olor Luz] POST de login no Apps Script falhou, tentando via GET:', postErr);
-      }
-
-      // Fallback para GET no doGet(e) do Apps Script
-      const responseGet = await fetch(loginUrl, {
-        method: 'GET',
-        redirect: 'follow',
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (responseGet.ok) {
-        const jsonGet = await responseGet.json();
-        if (jsonGet && jsonGet.status === 'success' && jsonGet.user) {
-          const novosLocais = usuariosLocais.filter(u => u.email.trim().toLowerCase() !== emailClean);
-          novosLocais.push({
-            nome: jsonGet.user.nome,
-            tipo: jsonGet.user.tipo,
-            email: jsonGet.user.email,
-            senha: senhaClean
-          });
-          saveLocalUsuarios(novosLocais);
-
-          return {
-            success: true,
-            user: {
-              nome: jsonGet.user.nome,
-              tipo: jsonGet.user.tipo,
-              email: jsonGet.user.email
-            }
-          };
-        } else if (jsonGet && jsonGet.status === 'error') {
-          return { success: false, message: jsonGet.message || 'E-mail ou senha incorretos.' };
-        }
-      }
-    } catch (err: any) {
-      console.warn('[SIG Olor Luz] Consulta direta de login no Apps Script falhou, tentando sincronizar tabela de usuários:', err);
-    }
-
-    // 3. FALLBACK DE SEGURANÇA: Busca a lista completa de usuários na aba "Usuários" da planilha do Google Sheets
-    try {
-      const usuariosPlanilha = await getUsuariosApi();
-      const userEncontrado = usuariosPlanilha.find(
-        u => u.email.trim().toLowerCase() === emailClean && u.senha?.trim() === senhaClean
-      );
-
-      if (userEncontrado) {
-        const novosLocais = getLocalUsuarios().filter(u => u.email.trim().toLowerCase() !== emailClean);
-        novosLocais.push({
-          nome: userEncontrado.nome,
-          tipo: userEncontrado.tipo,
-          email: userEncontrado.email,
-          senha: senhaClean
-        });
-        saveLocalUsuarios(novosLocais);
-
-        return {
-          success: true,
-          user: {
-            nome: userEncontrado.nome,
-            tipo: userEncontrado.tipo,
-            email: userEncontrado.email
-          }
-        };
-      }
-    } catch (syncErr) {
-      console.warn('[SIG Olor Luz] Erro no fallback de verificação de usuários:', syncErr);
-    }
-  }
-
   return {
     success: false,
     message: 'E-mail ou senha incorretos (verifique se os dados estão cadastrados na aba Usuários).'
   };
-}
-
-/**
- * Busca a lista de usuários cadastrados (action = 'get_usuarios')
- */
-export async function getUsuariosApi(): Promise<User[]> {
-  const apiUrl = getAppsScriptUrl();
-
-  if (apiUrl) {
-    try {
-      const getUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=get_usuarios`;
-      const response = await fetch(getUrl, { method: 'GET', redirect: 'follow' });
-      if (response.ok) {
-        const json = await response.json();
-        if (json && json.status === 'success' && Array.isArray(json.usuarios)) {
-          saveLocalUsuarios(json.usuarios);
-          return json.usuarios;
-        }
-      }
-    } catch (err) {
-      console.warn('[SIG Olor Luz] Erro ao carregar usuarios da API, usando local:', err);
-    }
-  }
-
-  return getLocalUsuarios();
 }
 
 /**
