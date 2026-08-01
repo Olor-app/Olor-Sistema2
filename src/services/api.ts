@@ -820,7 +820,7 @@ export async function loginApi(email: string, senha: string): Promise<{
   const emailClean = email.trim().toLowerCase();
   const senhaClean = senha.trim();
 
-  // 1. FAST-PATH: Verificação instantânea nos usuários locais/armazenados (0ms)
+  // 1. FAST-PATH: Verificação instantânea se já existe nos usuários armazenados localmente (0ms)
   const usuariosLocais = getLocalUsuarios();
   const userLocal = usuariosLocais.find(
     u => u.email.trim().toLowerCase() === emailClean && u.senha?.trim() === senhaClean
@@ -837,15 +837,58 @@ export async function loginApi(email: string, senha: string): Promise<{
     };
   }
 
-  // 2. Se não encontrou localmente, consulta a API do Apps Script via GET rápido (timeout 2.5s)
+  // 2. Consulta a API do Apps Script (Google Sheets)
   const apiUrl = getAppsScriptUrl();
   if (apiUrl) {
     try {
+      const payload = JSON.stringify({ action: 'login', email: emailClean, senha: senhaClean });
       const loginUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}action=login&email=${encodeURIComponent(emailClean)}&senha=${encodeURIComponent(senhaClean)}`;
 
+      // Timeout seguro de 15s para a latência normal do Google Apps Script
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
+      // Tenta via POST primeiro
+      try {
+        const responsePost = await fetch(loginUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: payload,
+          redirect: 'follow',
+          signal: controller.signal
+        });
+
+        if (responsePost.ok) {
+          const jsonPost = await responsePost.json();
+          if (jsonPost && jsonPost.status === 'success' && jsonPost.user) {
+            clearTimeout(timeoutId);
+            const novosLocais = usuariosLocais.filter(u => u.email.trim().toLowerCase() !== emailClean);
+            novosLocais.push({
+              nome: jsonPost.user.nome,
+              tipo: jsonPost.user.tipo,
+              email: jsonPost.user.email,
+              senha: senhaClean
+            });
+            saveLocalUsuarios(novosLocais);
+
+            return {
+              success: true,
+              user: {
+                nome: jsonPost.user.nome,
+                tipo: jsonPost.user.tipo,
+                email: jsonPost.user.email
+              }
+            };
+          } else if (jsonPost && jsonPost.status === 'error' && jsonPost.message && !jsonPost.message.includes('Ação não')) {
+            clearTimeout(timeoutId);
+            return { success: false, message: jsonPost.message || 'E-mail ou senha incorretos.' };
+          }
+        }
+      } catch (postErr) {
+        console.warn('[SIG Olor Luz] POST de login no Apps Script falhou, tentando via GET:', postErr);
+      }
+
+      // Fallback para GET no doGet(e) do Apps Script
       const responseGet = await fetch(loginUrl, {
         method: 'GET',
         redirect: 'follow',
@@ -856,7 +899,6 @@ export async function loginApi(email: string, senha: string): Promise<{
       if (responseGet.ok) {
         const jsonGet = await responseGet.json();
         if (jsonGet && jsonGet.status === 'success' && jsonGet.user) {
-          // Atualiza lista local para próximos logins
           const novosLocais = usuariosLocais.filter(u => u.email.trim().toLowerCase() !== emailClean);
           novosLocais.push({
             nome: jsonGet.user.nome,
@@ -879,13 +921,43 @@ export async function loginApi(email: string, senha: string): Promise<{
         }
       }
     } catch (err: any) {
-      console.warn('[SIG Olor Luz] Consulta remota de login cancelada ou falhou:', err);
+      console.warn('[SIG Olor Luz] Consulta direta de login no Apps Script falhou, tentando sincronizar tabela de usuários:', err);
+    }
+
+    // 3. FALLBACK DE SEGURANÇA: Busca a lista completa de usuários na aba "Usuários" da planilha do Google Sheets
+    try {
+      const usuariosPlanilha = await getUsuariosApi();
+      const userEncontrado = usuariosPlanilha.find(
+        u => u.email.trim().toLowerCase() === emailClean && u.senha?.trim() === senhaClean
+      );
+
+      if (userEncontrado) {
+        const novosLocais = getLocalUsuarios().filter(u => u.email.trim().toLowerCase() !== emailClean);
+        novosLocais.push({
+          nome: userEncontrado.nome,
+          tipo: userEncontrado.tipo,
+          email: userEncontrado.email,
+          senha: senhaClean
+        });
+        saveLocalUsuarios(novosLocais);
+
+        return {
+          success: true,
+          user: {
+            nome: userEncontrado.nome,
+            tipo: userEncontrado.tipo,
+            email: userEncontrado.email
+          }
+        };
+      }
+    } catch (syncErr) {
+      console.warn('[SIG Olor Luz] Erro no fallback de verificação de usuários:', syncErr);
     }
   }
 
   return {
     success: false,
-    message: 'E-mail ou senha incorretos (verifique se os dados estão cadastrados).'
+    message: 'E-mail ou senha incorretos (verifique se os dados estão cadastrados na aba Usuários).'
   };
 }
 
