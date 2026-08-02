@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Usuário do sistema SIG Olor Luz",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string", "description": "Nome do vendedor ou administrador" },
+        "email": { "type": "string", "description": "Email do usuário" },
+        "tipo": { "type": "string", "enum": ["Master", "Vendedor"], "description": "Nível de acesso" }
+      },
+      "required": ["nome", "email", "tipo"]
+    },
+    "Venda": {
+      "title": "Venda",
+      "description": "Registro de venda ou lançamento no sistema",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "data": { "type": "string" },
+        "idSaida": { "type": "string" },
+        "vendedor": { "type": "string" },
+        "tabelaPreco": { "type": "string" },
+        "tipoSaida": { "type": "string" },
+        "produto": { "type": "string" },
+        "embalagem": { "type": "string" },
+        "quantidade": { "type": "number" },
+        "modificador": { "type": "number" },
+        "precoUni": { "type": "number" },
+        "precoVenda": { "type": "number" },
+        "comissao": { "type": "number" },
+        "statusComissao": { "type": "string" },
+        "dia": { "type": "number" },
+        "mes": { "type": "number" },
+        "ano": { "type": "number" },
+        "obs": { "type": "string" },
+        "clienteInfluenciador": { "type": "string" },
+        "contato": { "type": "string" }
+      },
+      "required": ["data", "vendedor", "produto", "embalagem", "quantidade"]
+    }
+  },
+  "firestore": {
+    "/usuarios/{userId}": {
+      "schema": "User",
+      "description": "Coleção de perfis de usuários com RBAC"
+    },
+    "/vendas/{vendaId}": {
+      "schema": "Venda",
+      "description": "Coleção de pedidos e vendas da Olor Luz"
+    }
+  }
+}

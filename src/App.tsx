@@ -1,35 +1,58 @@
 import React, { useState, useEffect } from 'react';
 import { ListasSelects, Venda, User } from './types';
-import { fetchListasEVendas, DEFAULT_LISTAS, getLocalVendas, getAppsScriptUrl, getCurrentUser, logoutUser } from './services/api';
+import { fetchListasEVendas, DEFAULT_LISTAS, getLocalVendas, getCurrentUser, setCurrentUser, logoutUser } from './services/api';
 import { Sidebar, TabType } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { VendaForm } from './components/VendaForm';
 import { VendasTable } from './components/VendasTable';
 import { PriceMatrix } from './components/PriceMatrix';
-import { AppsScriptView } from './components/AppsScriptView';
 import { UserManagement } from './components/UserManagement';
 import { LoginScreen } from './components/LoginScreen';
-import { SettingsModal } from './components/SettingsModal';
 import { Logo } from './components/Logo';
-import { AlertTriangle, Sparkles, RefreshCw, Database, Settings, PanelLeftOpen, PanelLeftClose, ShieldCheck, UserCheck } from 'lucide-react';
+import { auth } from './lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { AlertTriangle, Sparkles, RefreshCw, Database, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => getCurrentUser());
+  const [currentUser, setCurrentUserState] = useState<User | null>(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [listas, setListas] = useState<ListasSelects>(DEFAULT_LISTAS);
   const [vendas, setVendas] = useState<Venda[]>(getLocalVendas());
   const [dadosBrutos, setDadosBrutos] = useState<any[]>([]);
-  const [isMock, setIsMock] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
-  const apiUrl = getAppsScriptUrl();
+  // Escuta alteração no estado da autenticação Firebase Auth
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser) {
+        const stored = getCurrentUser();
+        if (stored) {
+          setCurrentUserState(stored);
+        } else {
+          const emailClean = fbUser.email?.toLowerCase() || '';
+          const isMaster = emailClean === 'gleydsonwsm@gmail.com' || emailClean === 'master@olorluz.com.br';
+          const newUser: User = {
+            nome: emailClean === 'gleydsonwsm@gmail.com' ? 'Gleydson' : emailClean.split('@')[0],
+            tipo: isMaster ? 'Master' : 'Vendedor',
+            email: emailClean
+          };
+          setCurrentUser(newUser);
+          setCurrentUserState(newUser);
+        }
+      } else {
+        setCurrentUser(null);
+        setCurrentUserState(null);
+      }
+    });
 
-  const handleLogout = () => {
-    logoutUser();
-    setCurrentUser(null);
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await logoutUser();
+    setCurrentUserState(null);
   };
 
   const carregarDados = async () => {
@@ -40,7 +63,6 @@ export default function App() {
       const res = await fetchListasEVendas();
       setListas(res.listas);
       setVendas(res.vendas);
-      setIsMock(res.isMock);
       if (res.rawDadosBrutos) setDadosBrutos(res.rawDadosBrutos);
       if (res.error) setErrorMsg(res.error);
     } catch (err: any) {
@@ -60,7 +82,7 @@ export default function App() {
   // Bloqueio RBAC para vendedores tentando acessar rotas administrativas
   useEffect(() => {
     if (currentUser && currentUser.tipo === 'Vendedor') {
-      if (['nova-venda', 'tabela-precos', 'gestao-usuarios', 'apps-script'].includes(activeTab)) {
+      if (['nova-venda', 'tabela-precos', 'gestao-usuarios'].includes(activeTab)) {
         setActiveTab('dashboard');
       }
     }
@@ -71,9 +93,9 @@ export default function App() {
     setVendas((prev) => [...novos, ...prev]);
   };
 
-  // Se não estiver logado, exibe a Tela de Login de Alto Padrão
+  // Se não estiver logado, exibe APENAS a Tela de Login de Alto Padrão
   if (!currentUser) {
-    return <LoginScreen onLoginSuccess={(u) => setCurrentUser(u)} />;
+    return <LoginScreen onLoginSuccess={(u) => setCurrentUserState(u)} />;
   }
 
   return (
@@ -83,9 +105,9 @@ export default function App() {
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        isMock={isMock}
-        apiUrl={apiUrl}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        isMock={false}
+        apiUrl=""
+        onOpenSettings={() => {}}
         onRefresh={carregarDados}
         loading={loading}
         isCollapsed={isCollapsed}
@@ -114,11 +136,10 @@ export default function App() {
             <div>
               <h1 className="font-cinzel text-xl sm:text-2xl font-bold text-amber-200 tracking-wider">
                 {activeTab === 'dashboard' && 'Dashboard de Vendas'}
-                {activeTab === 'historico' && 'Histórico de Saídas'}
+                {activeTab === 'historico' && 'Histórico de Saídas (BD_Vendas)'}
                 {activeTab === 'nova-venda' && 'Lançamento de Nova Saída / Pedido'}
                 {activeTab === 'tabela-precos' && 'Matriz de Produtos & Preços'}
                 {activeTab === 'gestao-usuarios' && 'Gestão de Usuários & Acessos (RBAC)'}
-                {activeTab === 'apps-script' && 'Integração Google Apps Script'}
               </h1>
               <p className="text-xs text-slate-400">
                 SIG Olor Luz — Logado como <strong className="text-amber-300">{currentUser.nome}</strong> ({currentUser.tipo})
@@ -131,69 +152,28 @@ export default function App() {
               onClick={carregarDados}
               disabled={loading}
               className="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl border border-slate-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-              title="Sincronizar e Atualizar com o Google Sheets"
+              title="Sincronizar com Firebase Firestore"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
-              <span className="hidden md:inline">{loading ? 'Carregando...' : 'Sincronizar Dados'}</span>
+              <span className="hidden md:inline">{loading ? 'Carregando...' : 'Atualizar Dados'}</span>
             </button>
 
-            {currentUser.tipo === 'Master' && (
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                  apiUrl && !isMock
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                    : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
-                }`}
-              >
-                <Database className="w-3.5 h-3.5" />
-                <span>{apiUrl && !isMock ? 'Planilha Conectada' : 'Modo Demonstrativo'}</span>
-                <Settings className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
-              </button>
-            )}
+            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold border bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+              <Database className="w-3.5 h-3.5" />
+              <span>Firebase Conectado</span>
+            </div>
           </div>
 
         </header>
 
-        {/* Faixa de Aviso de Erro ou Modo Demonstrativo */}
-        {errorMsg ? (
+        {/* Faixa de Aviso se houver erro */}
+        {errorMsg && (
           <div className="bg-rose-500/10 border-b border-rose-500/20 px-6 py-2.5 text-xs text-rose-200">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center space-x-2">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span><strong>Erro de Conexão:</strong> {errorMsg}</span>
-              </div>
-              {currentUser.tipo === 'Master' && (
-                <button
-                  onClick={() => setActiveTab('apps-script')}
-                  className="bg-rose-500 text-white font-bold px-3 py-1 rounded-lg text-[11px] shadow hover:bg-rose-400 whitespace-nowrap"
-                >
-                  Ver Solução
-                </button>
-              )}
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span><strong>Aviso:</strong> {errorMsg}</span>
             </div>
           </div>
-        ) : (
-          (!apiUrl || isMock) && (
-            <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2.5 text-xs text-amber-200">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center space-x-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>
-                    <strong>Modo Demonstrativo:</strong> Sistema rodando com dados locais.
-                  </span>
-                </div>
-                {currentUser.tipo === 'Master' && (
-                  <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="bg-amber-500 text-slate-950 font-bold px-3 py-1 rounded-lg text-[11px] shadow hover:bg-amber-400 whitespace-nowrap"
-                  >
-                    Conectar Planilha
-                  </button>
-                )}
-              </div>
-            </div>
-          )
         )}
 
         {/* ÁREA DE CONTEÚDO DE CADA ABA */}
@@ -220,8 +200,8 @@ export default function App() {
             </section>
           )}
 
-          {/* 3. NOVA SAÍDA */}
-          {activeTab === 'nova-venda' && (
+          {/* 3. NOVA SAÍDA (Apenas Master) */}
+          {activeTab === 'nova-venda' && currentUser.tipo === 'Master' && (
             <section className="space-y-6">
               <VendaForm
                 listas={listas}
@@ -248,13 +228,6 @@ export default function App() {
             </section>
           )}
 
-          {/* 6. CÓDIGO APPS SCRIPT (Apenas Master) */}
-          {activeTab === 'apps-script' && currentUser.tipo === 'Master' && (
-            <section className="space-y-6">
-              <AppsScriptView />
-            </section>
-          )}
-
         </main>
 
         {/* RODAPÉ */}
@@ -266,21 +239,13 @@ export default function App() {
               <span>— ERP de Gestão, Comissionamento e Controle de Acesso (RBAC)</span>
             </div>
             <p className="text-[11px]">
-              Sincronizado com Planilha <code className="text-slate-400">Olor_Luz_Sistema</code> (Abas Listas, BD_Vendas e Usuários).
+              Back-end Firebase NoSQL <code className="text-slate-400">sig-olorluz</code> (Coleções: usuarios e vendas).
             </p>
           </div>
         </footer>
 
       </div>
 
-      {/* MODAL DE CONFIGURAÇÃO DA API */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onSaved={carregarDados}
-      />
-
     </div>
   );
 }
-

@@ -22,7 +22,7 @@ import {
   UserCheck
 } from 'lucide-react';
 
-export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'tabela-precos' | 'gestao-usuarios' | 'apps-script';
+export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'tabela-precos' | 'gestao-usuarios';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -95,14 +95,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: 'Master',
       badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
       allowedRoles: ['Master']
-    },
-    {
-      id: 'apps-script' as TabType,
-      label: 'Código Apps Script',
-      description: 'Configuração da Planilha',
-      icon: Code2,
-      allowedRoles: ['Master']
-    },
+    }
   ];
 
   const menuItems = allMenuItems.filter(item => 
@@ -334,50 +327,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
             
             {!isCollapsed ? (
-              isMaster && (
-                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                      <Database className="w-3.5 h-3.5 text-amber-400" />
-                      Conexão Sheets
-                    </span>
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        apiUrl && !isMock ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
-                      }`}
-                    />
-                  </div>
-
-                  <p className="text-[11px] text-slate-300 font-medium truncate">
-                    {apiUrl && !isMock ? 'Google Planilhas OK' : 'Modo Local (Demo)'}
-                  </p>
-
-                  <button
-                    onClick={onOpenSettings}
-                    className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <Settings className="w-3.5 h-3.5" />
-                    <span>Configurar URL API</span>
-                  </button>
+              <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                    <Database className="w-3.5 h-3.5 text-amber-400" />
+                    Firebase Firestore
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 </div>
-              )
+
+                <p className="text-[11px] text-slate-300 font-medium truncate">
+                  Backend NoSQL Conectado
+                </p>
+              </div>
             ) : (
-              isMaster && (
-                <div className="flex flex-col items-center gap-2 py-1">
-                  <button
-                    onClick={onOpenSettings}
-                    className="p-2 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800 rounded-xl transition-colors relative"
-                    title={apiUrl && !isMock ? "Google Planilhas Conectado - Configurar API" : "Modo Local - Configurar API"}
-                  >
-                    <Settings className="w-4 h-4" />
-                    <span
-                      className={`absolute top-1 right-1 w-2 h-2 rounded-full ${
-                        apiUrl && !isMock ? 'bg-emerald-400' : 'bg-amber-400'
-                      }`}
-                    />
-                  </button>
+              <div className="flex flex-col items-center gap-2 py-1">
+                <div
+                  className="p-2 bg-slate-900 text-amber-400 border border-slate-800 rounded-xl relative"
+                  title="Firebase Firestore Conectado"
+                >
+                  <Database className="w-4 h-4" />
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400" />
                 </div>
-              )
+              </div>
             )}
 
             {!isCollapsed && (
