@@ -16,5 +16,10 @@ service cloud.firestore {
     match /vendas/{vendaId} {
       allow read, create, update, delete: if request.auth != null;
     }
+
+    // Coleção de configurações e matriz de preços
+    match /config/{configId} {
+      allow read, write: if request.auth != null;
+    }
   }
 }

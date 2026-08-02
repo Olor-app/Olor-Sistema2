@@ -19,10 +19,11 @@ import {
   Users,
   LogOut,
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  ListChecks
 } from 'lucide-react';
 
-export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'tabela-precos' | 'gestao-usuarios';
+export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'tabela-precos' | 'listas' | 'gestao-usuarios';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -82,9 +83,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'tabela-precos' as TabType,
-      label: 'Preços & Listas',
+      label: 'Preços & Embalagens',
       description: 'Matriz de Produtos & Preços',
       icon: DollarSign,
+      allowedRoles: ['Master']
+    },
+    {
+      id: 'listas' as TabType,
+      label: 'Listas do Sistema',
+      description: 'Vendedores, Produtos e Saídas',
+      icon: ListChecks,
       allowedRoles: ['Master']
     },
     {

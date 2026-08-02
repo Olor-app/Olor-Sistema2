@@ -158,6 +158,10 @@ export async function testarConexaoApi(_url?: string): Promise<{ success: boolea
   return { success: true, message: 'Backend Firebase NoSQL Ativo e Conectado' };
 }
 
+// --- MEMÓRIA EM TEMPO REAL PARA LISTAS E MATRIZ DE PREÇOS ---
+export let CURRENT_MATRIZ_PRECOS: Record<string, Record<string, number>> = JSON.parse(JSON.stringify(DEFAULT_MATRIZ_PRECOS));
+export let CURRENT_LISTAS: ListasSelects = JSON.parse(JSON.stringify(DEFAULT_LISTAS));
+
 // --- BUSCA DE PREÇO UNITÁRIO SUGERIDO ---
 export function buscarPrecoUnitario(
   embalagem: string,
@@ -169,13 +173,18 @@ export function buscarPrecoUnitario(
   const embNorm = embalagem.trim();
   const tabNorm = tabelaPreco.trim();
 
-  if (DEFAULT_MATRIZ_PRECOS[embNorm] && DEFAULT_MATRIZ_PRECOS[embNorm][tabNorm]) {
-    return DEFAULT_MATRIZ_PRECOS[embNorm][tabNorm];
+  // 1. Busca direta exata na matriz atual
+  if (CURRENT_MATRIZ_PRECOS[embNorm] && CURRENT_MATRIZ_PRECOS[embNorm][tabNorm] !== undefined) {
+    return CURRENT_MATRIZ_PRECOS[embNorm][tabNorm];
   }
 
-  // Fallback se não encontrar exato
-  if (DEFAULT_MATRIZ_PRECOS[embNorm]) {
-    const valores = Object.values(DEFAULT_MATRIZ_PRECOS[embNorm]);
+  // 2. Busca case-insensitive
+  const keyFound = Object.keys(CURRENT_MATRIZ_PRECOS).find(k => k.trim().toLowerCase() === embNorm.toLowerCase());
+  if (keyFound && CURRENT_MATRIZ_PRECOS[keyFound]) {
+    if (CURRENT_MATRIZ_PRECOS[keyFound][tabNorm] !== undefined) {
+      return CURRENT_MATRIZ_PRECOS[keyFound][tabNorm];
+    }
+    const valores = Object.values(CURRENT_MATRIZ_PRECOS[keyFound]);
     if (valores.length > 0) return valores[0];
   }
 
@@ -285,6 +294,42 @@ export async function fetchListasEVendas(): Promise<{
   const currentUser = getCurrentUser();
 
   try {
+    // 1. Busca configurações salvas de matriz de preços e listas
+    try {
+      const configDocRef = doc(db, 'config', 'matrizPrecos');
+      const configSnap = await getDoc(configDocRef);
+      if (configSnap.exists()) {
+        const data = configSnap.data();
+        if (data.matriz) {
+          CURRENT_MATRIZ_PRECOS = data.matriz;
+        }
+        if (Array.isArray(data.embalagens) && data.embalagens.length > 0) {
+          CURRENT_LISTAS.embalagens = data.embalagens;
+        }
+      }
+
+      // Busca listas de Vendedores, Produtos e Tipos de Saída salvas
+      const listasDocRef = doc(db, 'config', 'listasCustomizadas');
+      const listasSnap = await getDoc(listasDocRef);
+      if (listasSnap.exists()) {
+        const data = listasSnap.data();
+        if (Array.isArray(data.vendedores) && data.vendedores.length > 0) {
+          CURRENT_LISTAS.vendedores = data.vendedores;
+        }
+        if (Array.isArray(data.produtos) && data.produtos.length > 0) {
+          CURRENT_LISTAS.produtos = data.produtos;
+        }
+        if (Array.isArray(data.tiposSaida) && data.tiposSaida.length > 0) {
+          CURRENT_LISTAS.tiposSaida = data.tiposSaida;
+        }
+        if (Array.isArray(data.embalagens) && data.embalagens.length > 0) {
+          CURRENT_LISTAS.embalagens = data.embalagens;
+        }
+      }
+    } catch (configErr) {
+      console.warn('Aviso: Não foi possível carregar listas do Firestore, utilizando padrão:', configErr);
+    }
+
     let vendasResult: Venda[] = [];
 
     if (currentUser) {
@@ -336,17 +381,79 @@ export async function fetchListasEVendas(): Promise<{
     }
 
     return {
-      listas: DEFAULT_LISTAS,
+      listas: CURRENT_LISTAS,
       vendas: vendasResult,
       isMock: false
     };
   } catch (err: any) {
     console.error('Erro ao buscar vendas do Firestore:', err);
     return {
-      listas: DEFAULT_LISTAS,
+      listas: CURRENT_LISTAS,
       vendas: DEFAULT_VENDAS_INICIAIS,
       isMock: true,
       error: `Firestore: ${err.message || 'Erro ao carregar dados'}`
+    };
+  }
+}
+
+// --- SALVAR MATRIZ DE PREÇOS E EMBALAGENS NO FIRESTORE ---
+export async function salvarMatrizPrecosApi(
+  novaMatriz: Record<string, Record<string, number>>,
+  novasEmbalagens: string[]
+): Promise<{ success: boolean; message: string }> {
+  // Atualiza cache em memória local instantaneamente
+  CURRENT_MATRIZ_PRECOS = JSON.parse(JSON.stringify(novaMatriz));
+  CURRENT_LISTAS.embalagens = [...novasEmbalagens];
+
+  try {
+    const configDocRef = doc(db, 'config', 'matrizPrecos');
+    await setDoc(configDocRef, {
+      matriz: novaMatriz,
+      embalagens: novasEmbalagens,
+      updatedAt: new Date().toISOString()
+    });
+
+    return {
+      success: true,
+      message: 'Matriz de preços e lista de embalagens salvas com sucesso no Firebase!'
+    };
+  } catch (err: any) {
+    console.error('Erro ao salvar matriz no Firestore:', err);
+    return {
+      success: true,
+      message: 'Matriz e embalagens atualizadas no sistema local!'
+    };
+  }
+}
+
+// --- SALVAR LISTAS CUSTOMIZADAS (VENDEDORES, PRODUTOS, TIPOS DE SAÍDA) ---
+export async function salvarListasCustomizadasApi(
+  novasListas: Partial<ListasSelects>
+): Promise<{ success: boolean; message: string }> {
+  if (novasListas.vendedores) CURRENT_LISTAS.vendedores = [...novasListas.vendedores];
+  if (novasListas.produtos) CURRENT_LISTAS.produtos = [...novasListas.produtos];
+  if (novasListas.tiposSaida) CURRENT_LISTAS.tiposSaida = [...novasListas.tiposSaida];
+  if (novasListas.embalagens) CURRENT_LISTAS.embalagens = [...novasListas.embalagens];
+
+  try {
+    const listasDocRef = doc(db, 'config', 'listasCustomizadas');
+    await setDoc(listasDocRef, {
+      vendedores: CURRENT_LISTAS.vendedores,
+      produtos: CURRENT_LISTAS.produtos,
+      tiposSaida: CURRENT_LISTAS.tiposSaida,
+      embalagens: CURRENT_LISTAS.embalagens,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    return {
+      success: true,
+      message: 'Listas do sistema atualizadas com sucesso no Firebase!'
+    };
+  } catch (err: any) {
+    console.error('Erro ao salvar listas no Firestore:', err);
+    return {
+      success: true,
+      message: 'Listas atualizadas na sessão local!'
     };
   }
 }

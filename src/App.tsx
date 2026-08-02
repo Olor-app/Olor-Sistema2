@@ -6,6 +6,7 @@ import { Dashboard } from './components/Dashboard';
 import { VendaForm } from './components/VendaForm';
 import { VendasTable } from './components/VendasTable';
 import { PriceMatrix } from './components/PriceMatrix';
+import { ListasManagement } from './components/ListasManagement';
 import { UserManagement } from './components/UserManagement';
 import { LoginScreen } from './components/LoginScreen';
 import { Logo } from './components/Logo';
@@ -82,7 +83,7 @@ export default function App() {
   // Bloqueio RBAC para vendedores tentando acessar rotas administrativas
   useEffect(() => {
     if (currentUser && currentUser.tipo === 'Vendedor') {
-      if (['nova-venda', 'tabela-precos', 'gestao-usuarios'].includes(activeTab)) {
+      if (['nova-venda', 'tabela-precos', 'listas', 'gestao-usuarios'].includes(activeTab)) {
         setActiveTab('dashboard');
       }
     }
@@ -139,6 +140,7 @@ export default function App() {
                 {activeTab === 'historico' && 'Histórico de Saídas (BD_Vendas)'}
                 {activeTab === 'nova-venda' && 'Lançamento de Nova Saída / Pedido'}
                 {activeTab === 'tabela-precos' && 'Matriz de Produtos & Preços'}
+                {activeTab === 'listas' && 'Gestão de Listas do Sistema'}
                 {activeTab === 'gestao-usuarios' && 'Gestão de Usuários & Acessos (RBAC)'}
               </h1>
               <p className="text-xs text-slate-400">
@@ -211,17 +213,28 @@ export default function App() {
             </section>
           )}
 
-          {/* 4. MATRIZ DE PREÇOS & LISTAS (Apenas Master) */}
+          {/* 4. MATRIZ DE PREÇOS & EMBALAGENS (Apenas Master) */}
           {activeTab === 'tabela-precos' && currentUser.tipo === 'Master' && (
             <section className="space-y-6">
               <PriceMatrix
                 listas={listas}
                 dadosBrutos={dadosBrutos}
+                onRefresh={carregarDados}
               />
             </section>
           )}
 
-          {/* 5. GESTÃO DE USUÁRIOS (RBAC - Apenas Master) */}
+          {/* 5. GESTÃO DE LISTAS DO SISTEMA (Apenas Master) */}
+          {activeTab === 'listas' && currentUser.tipo === 'Master' && (
+            <section className="space-y-6">
+              <ListasManagement
+                listas={listas}
+                onRefresh={carregarDados}
+              />
+            </section>
+          )}
+
+          {/* 6. GESTÃO DE USUÁRIOS (RBAC - Apenas Master) */}
           {activeTab === 'gestao-usuarios' && currentUser.tipo === 'Master' && (
             <section className="space-y-6">
               <UserManagement currentUser={currentUser} />
