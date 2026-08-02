@@ -179,7 +179,7 @@ export default function App() {
         )}
 
         {/* ÁREA DE CONTEÚDO DE CADA ABA */}
-        <main className="flex-1 p-4 sm:p-8 space-y-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 space-y-6 lg:space-y-8 max-w-7xl w-full mx-auto pb-28 lg:pb-8">
           
           {/* 1. DASHBOARD */}
           {activeTab === 'dashboard' && (

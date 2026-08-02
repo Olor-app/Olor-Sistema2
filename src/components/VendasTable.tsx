@@ -886,7 +886,155 @@ export const VendasTable: React.FC<VendasTableProps> = ({
           )}
         </div>
 
-        <div className="overflow-x-auto">
+        {/* VISUALIZAÇÃO EM CARDS PARA MOBILE (Aparece apenas em telas pequenas < lg) */}
+        <div className="lg:hidden divide-y divide-slate-800">
+          {pedidosAgrupados.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-xs">
+              Nenhum pedido encontrado para os filtros selecionados.
+            </div>
+          ) : (
+            pedidosAgrupados.map((pedido) => {
+              const isExpandido = pedidosExpandidos.has(pedido.idSaida);
+              const isEmEdicao = editandoIdSaida === pedido.idSaida;
+              const isConsignado = (pedido.tipoSaida || '').toLowerCase() === 'consignado';
+              const isAmostra = (pedido.tipoSaida || '').toLowerCase().includes('amostra');
+              const isOutraSaida = (pedido.tipoSaida || '').toLowerCase() !== 'venda' && !isConsignado && !isAmostra;
+
+              return (
+                <div key={`mobile-${pedido.idSaida}`} className="p-4 space-y-3 bg-slate-900/80 hover:bg-slate-900 transition-colors">
+                  
+                  {/* Cabeçalho do Card Mobile */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <span className="font-bold text-slate-100 text-sm">{formatarDataBR(pedido.data)}</span>
+                      <span className="text-[10px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 truncate">
+                        #{pedido.idSaida}
+                      </span>
+                    </div>
+
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase shrink-0 ${
+                      pedido.statusComissao === 'Pago'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : pedido.statusComissao === 'Não Pago' || pedido.statusComissao === 'Não pago'
+                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                        : pedido.statusComissao === 'Pendente'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700 font-normal'
+                    }`}>
+                      {pedido.statusComissao || 'Sem comissão'}
+                    </span>
+                  </div>
+
+                  {/* Informações do Vendedor e Tipo de Saída */}
+                  <div className="flex items-center justify-between text-xs text-slate-300 pt-1">
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-200">
+                      <UserIcon className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{pedido.vendedor}</span>
+                    </div>
+
+                    <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                      isConsignado
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                        : isAmostra
+                        ? 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30'
+                        : isOutraSaida
+                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}>
+                      {pedido.tipoSaida}
+                    </span>
+                  </div>
+
+                  {/* Métricas Principais (Valores e Peças) */}
+                  <div className="grid grid-cols-3 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center font-mono">
+                    <div>
+                      <span className="text-[10px] text-slate-500 block uppercase">Itens / Qtd</span>
+                      <span className="text-xs font-bold text-slate-200">{pedido.quantidadeTotal} un</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-amber-400/80 block uppercase">Total Venda</span>
+                      <span className="text-xs font-bold text-amber-300">{formatarMoeda(pedido.totalVenda)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-emerald-400/80 block uppercase">Comissão</span>
+                      <span className="text-xs font-bold text-emerald-400">{formatarMoeda(pedido.totalComissao)}</span>
+                    </div>
+                  </div>
+
+                  {/* Barra de Ações Rápidas Mobile (Touch Target Ampliado > 44px) */}
+                  <div className="flex items-center justify-between pt-1 gap-2">
+                    <button
+                      onClick={() => toggleExpandir(pedido.idSaida)}
+                      className="flex-1 py-2 px-3 bg-slate-950 hover:bg-slate-800 text-amber-300 border border-slate-800 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 min-h-[44px]"
+                    >
+                      {isExpandido ? <ChevronUp className="w-4 h-4 text-amber-400" /> : <ChevronDown className="w-4 h-4 text-amber-400" />}
+                      <span>{isExpandido ? 'Ocultar Itens' : `Ver ${pedido.itens.length} item(ns)`}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleGerarPdf(pedido)}
+                      className="p-2.5 bg-slate-950 hover:bg-amber-500/20 text-amber-400 border border-slate-800 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center"
+                      title="Gerar PDF"
+                    >
+                      <FileText className="w-4 h-4" />
+                    </button>
+
+                    {isMaster && (
+                      <button
+                        onClick={() => handleIniciarEdicao(pedido)}
+                        className={`p-2.5 rounded-xl border min-h-[44px] min-w-[44px] flex items-center justify-center ${
+                          isEmEdicao
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold'
+                            : 'bg-slate-950 hover:bg-sky-500/20 text-sky-400 border-slate-800'
+                        }`}
+                        title="Editar Pedido"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
+
+                    {isMaster && (
+                      <button
+                        onClick={() => setExcluindoIdSaida(pedido.idSaida)}
+                        className="p-2.5 bg-slate-950 hover:bg-rose-500/20 text-rose-400 border border-slate-800 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        title="Excluir Pedido"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Sub-lista Expandida Mobile se aberto */}
+                  {isExpandido && !isEmEdicao && (
+                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2 mt-2 animate-fadeIn text-xs">
+                      <p className="font-bold text-amber-300 text-[11px] uppercase tracking-wider font-mono">
+                        Produtos do Pedido #{pedido.idSaida}
+                      </p>
+                      <div className="divide-y divide-slate-800/80">
+                        {pedido.itens.map((item, idx) => (
+                          <div key={item.id || idx} className="py-2 space-y-1">
+                            <div className="flex justify-between font-semibold text-slate-100">
+                              <span>{item.produto}</span>
+                              <span className="font-mono text-amber-300">{formatarMoeda(item.precoVenda)}</span>
+                            </div>
+                            <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+                              <span>{item.embalagem} × {item.quantidade} un</span>
+                              <span>Uni: {formatarMoeda(item.precoUni)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* TABELA DE PEDIDOS PARA DESKTOP (Com Rolagem Horizontal) */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider font-mono">
               <tr>

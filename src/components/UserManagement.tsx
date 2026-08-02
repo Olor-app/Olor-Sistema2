@@ -216,8 +216,84 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           </span>
         </div>
 
-        {/* Tabela de Usuários */}
-        <div className="overflow-x-auto">
+        {/* Visualização em Cards para Dispositivos Móveis (Mobile First) */}
+        <div className="md:hidden divide-y divide-slate-800">
+          {loading ? (
+            <div className="p-8 text-center text-slate-400">
+              <Loader2 className="w-6 h-6 animate-spin text-amber-400 mx-auto mb-2" />
+              <span>Carregando usuários...</span>
+            </div>
+          ) : usuariosFiltrados.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              Nenhum usuário encontrado.
+            </div>
+          ) : (
+            usuariosFiltrados.map((user) => (
+              <div key={user.email} className="p-4 space-y-3 bg-slate-900/60 hover:bg-slate-900 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs ${
+                      user.tipo === 'Master' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                    }`}>
+                      {user.nome.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-100 text-sm">{user.nome}</h4>
+                      <p className="text-[11px] text-slate-400 font-mono">{user.email}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleOpenEditar(user)}
+                      className="p-2.5 text-slate-400 hover:text-amber-300 bg-slate-950 border border-slate-800 rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                      title="Editar Usuário"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => setDeletandoUser(user)}
+                      className="p-2.5 text-slate-400 hover:text-rose-400 bg-slate-950 border border-slate-800 rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                      title="Excluir Usuário"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
+                  <div>
+                    {user.tipo === 'Master' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                        <ShieldCheck className="w-3 h-3" /> Master
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-300 border border-blue-500/30">
+                        <UserCheck className="w-3 h-3" /> Vendedor
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 font-mono text-slate-400">
+                    <span>Senha: {showPassword[user.email] ? (user.senha || '••••••') : '••••••••'}</span>
+                    <button
+                      type="button"
+                      onClick={() => togglePasswordVisibility(user.email)}
+                      className="text-slate-500 hover:text-amber-400 transition-colors p-1"
+                      title="Mostrar/ocultar senha"
+                    >
+                      {showPassword[user.email] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Tabela de Usuários para Desktop */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="bg-slate-950 text-slate-400 font-mono border-b border-slate-800 uppercase tracking-wider text-[10px]">
@@ -313,8 +389,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
       {/* MODAL CRIAR / EDITAR USUÁRIO */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-6 shadow-2xl relative">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-3 animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-[95%] max-w-md p-5 sm:p-6 space-y-5 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <h3 className="font-cinzel text-lg font-bold text-amber-200">
@@ -322,9 +398,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-200"
+                className="p-2 text-slate-400 hover:text-slate-100 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Fechar Modal"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 text-amber-400" />
               </button>
             </div>
 

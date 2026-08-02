@@ -118,14 +118,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {/* CABEÇALHO MOBILE (Aparece apenas em telas pequenas) */}
-      <div className="lg:hidden bg-slate-950 border-b border-slate-800 p-4 sticky top-0 z-40 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="lg:hidden bg-slate-950/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 sticky top-0 z-40 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
           <Logo size="sm" showText={false} />
           <div>
-            <h1 className="font-cinzel font-bold text-lg text-amber-200 tracking-wider">
+            <h1 className="font-cinzel font-bold text-base text-amber-200 tracking-wider">
               OLOR LUZ
             </h1>
-            <p className="text-[10px] text-slate-400 font-mono">SIG ERP Vendas</p>
+            <p className="text-[10px] text-slate-400 font-mono">
+              {currentUser ? `${currentUser.nome} (${currentUser.tipo})` : 'SIG ERP'}
+            </p>
           </div>
         </div>
 
@@ -134,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={onRefresh}
               disabled={loading}
-              className="p-2 text-slate-400 hover:text-amber-300 rounded-lg hover:bg-slate-900 transition-colors"
+              className="p-2.5 text-slate-400 hover:text-amber-300 rounded-xl bg-slate-900 border border-slate-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               title="Atualizar Dados"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-amber-400' : ''}`} />
@@ -143,19 +145,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 bg-slate-900 text-slate-200 border border-slate-800 rounded-xl hover:bg-slate-800 transition-colors"
-            aria-label="Abrir Menu"
+            className="p-2.5 bg-slate-900 text-slate-200 border border-slate-800 rounded-xl hover:bg-slate-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+            aria-label="Abrir Menu Completo"
           >
             {mobileMenuOpen ? <X className="w-5 h-5 text-amber-400" /> : <Menu className="w-5 h-5 text-amber-400" />}
           </button>
         </div>
       </div>
 
+      {/* BARRA DE NAVEGAÇÃO INFERIOR - BOTTOM NAVIGATION BAR (Aparece em Mobile) */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-lg border-t border-slate-800/90 z-50 px-1 py-1.5 flex items-center justify-around shadow-2xl">
+        {menuItems.slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          const isSelected = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => handleSelectTab(item.id)}
+              className={`flex flex-col items-center justify-center flex-1 py-1 px-1 min-h-[48px] rounded-xl transition-all ${
+                isSelected
+                  ? 'text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 scale-105'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+              }`}
+            >
+              <Icon className={`w-5 h-5 ${isSelected ? 'text-amber-400' : 'text-slate-400'}`} />
+              <span className="text-[10px] font-medium tracking-tight mt-0.5 truncate max-w-[64px]">
+                {item.label === 'Preços & Embalagens' ? 'Preços' : item.label === 'Listas do Sistema' ? 'Listas' : item.label}
+              </span>
+            </button>
+          );
+        })}
+
+        {/* Botão de Mais / Menu Completo no Bottom Bar */}
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 min-h-[48px] rounded-xl transition-all ${
+            mobileMenuOpen
+              ? 'text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Menu className="w-5 h-5 text-slate-400" />
+          <span className="text-[10px] font-medium tracking-tight mt-0.5">Mais</span>
+        </button>
+      </nav>
+
       {/* OVERLAY MOBILE QUANDO MENU ABERTO */}
       {mobileMenuOpen && (
         <div
           onClick={() => setMobileMenuOpen(false)}
-          className="lg:hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40"
+          className="lg:hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50"
         />
       )}
 
