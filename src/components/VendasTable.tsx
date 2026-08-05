@@ -488,6 +488,92 @@ export const VendasTable: React.FC<VendasTableProps> = ({
     setFormEdicao(null);
   };
 
+  // --- CONVERTER PEDIDO INTEIRO DE CONSIGNADO PARA VENDA ---
+  const handleConverterPedidoEmVenda = async (pedido: PedidoAgrupado) => {
+    try {
+      const tabPreco = pedido.tabelaPreco && pedido.tabelaPreco !== 'Consignado' ? pedido.tabelaPreco : 'Venda Direta';
+      const isOlorLuz = (pedido.vendedor || '').trim().toLowerCase() === 'olor luz';
+
+      const novosItens: Venda[] = pedido.itens.map(item => {
+        const emb = item.embalagem;
+        const precoUniBuscado = buscarPrecoUnitario(emb, tabPreco, dadosBrutos);
+        const quantidade = Number(item.quantidade) || 1;
+        const modificador = Number(item.modificador) || 0;
+
+        const precoUni = precoUniBuscado;
+        const subtotalBruto = precoUni * quantidade;
+        const precoVenda = Math.max(0, subtotalBruto + modificador);
+        const comissao = isOlorLuz ? 0 : Number(((subtotalBruto * 0.12) + modificador).toFixed(2));
+
+        return {
+          ...item,
+          tipoSaida: 'Venda',
+          tabelaPreco: tabPreco,
+          precoUni,
+          precoVenda,
+          comissao
+        };
+      });
+
+      const res = await atualizarPedidoApi(pedido.idSaida, novosItens);
+      if (res.success) {
+        mostrarToast('success', `Pedido ${pedido.idSaida} convertido com sucesso em Venda!`);
+        onRefresh();
+      } else {
+        mostrarToast('error', res.message);
+      }
+    } catch (err: any) {
+      mostrarToast('error', `Erro ao converter pedido: ${err.message || err}`);
+    }
+  };
+
+  // --- CONVERTER ITEM ESPECÍFICO DE CONSIGNADO PARA VENDA ---
+  const handleConverterItemEmVenda = async (pedido: PedidoAgrupado, indexItem: number) => {
+    try {
+      const tabPreco = pedido.tabelaPreco && pedido.tabelaPreco !== 'Consignado' ? pedido.tabelaPreco : 'Venda Direta';
+      const isOlorLuz = (pedido.vendedor || '').trim().toLowerCase() === 'olor luz';
+
+      const novosItens = pedido.itens.map((item, idx) => {
+        if (idx !== indexItem) return item;
+
+        const emb = item.embalagem;
+        const precoUniBuscado = buscarPrecoUnitario(emb, tabPreco, dadosBrutos);
+        const quantidade = Number(item.quantidade) || 1;
+        const modificador = Number(item.modificador) || 0;
+
+        const precoUni = precoUniBuscado;
+        const subtotalBruto = precoUni * quantidade;
+        const precoVenda = Math.max(0, subtotalBruto + modificador);
+        const comissao = isOlorLuz ? 0 : Number(((subtotalBruto * 0.12) + modificador).toFixed(2));
+
+        return {
+          ...item,
+          tipoSaida: 'Venda',
+          tabelaPreco: tabPreco,
+          precoUni,
+          precoVenda,
+          comissao
+        };
+      });
+
+      // Se todos os itens se tornaram Venda, ajusta o tipo geral para Venda
+      const todosVenda = novosItens.every(it => (it.tipoSaida || '').toLowerCase() === 'venda');
+      if (todosVenda) {
+        novosItens.forEach(it => { it.tipoSaida = 'Venda'; });
+      }
+
+      const res = await atualizarPedidoApi(pedido.idSaida, novosItens);
+      if (res.success) {
+        mostrarToast('success', `Item #${indexItem + 1} do pedido ${pedido.idSaida} convertido em Venda!`);
+        onRefresh();
+      } else {
+        mostrarToast('error', res.message);
+      }
+    } catch (err: any) {
+      mostrarToast('error', `Erro ao converter item: ${err.message || err}`);
+    }
+  };
+
   // Recálculo automático de Preço Uni, Preço Venda e Comissão para um item do formulário de edição
   const recalculareAtualizarItemForm = (
     indexItem: number,
@@ -989,7 +1075,7 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                   </div>
 
                   {/* Barra de Ações Rápidas Mobile (Touch Target Ampliado > 44px) */}
-                  <div className="flex items-center justify-between pt-1 gap-2">
+                  <div className="flex flex-wrap items-center justify-between pt-1 gap-2">
                     <button
                       onClick={() => toggleExpandir(pedido.idSaida)}
                       className="flex-1 py-2 px-3 bg-slate-950 hover:bg-slate-800 text-amber-300 border border-slate-800 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 min-h-[44px]"
@@ -997,6 +1083,17 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                       {isExpandido ? <ChevronUp className="w-4 h-4 text-amber-400" /> : <ChevronDown className="w-4 h-4 text-amber-400" />}
                       <span>{isExpandido ? 'Ocultar Itens' : `Ver ${pedido.itens.length} item(ns)`}</span>
                     </button>
+
+                    {(isConsignado || pedido.itens.some(it => (it.tipoSaida || '').toLowerCase() === 'consignado')) && (
+                      <button
+                        onClick={() => handleConverterPedidoEmVenda(pedido)}
+                        className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-extrabold rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-1.5 shrink-0 min-h-[44px]"
+                        title="Tornar toda esta saída consignada em Venda faturada"
+                      >
+                        <ShoppingBag className="w-4 h-4 text-slate-950" />
+                        <span>Tornar Venda</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => handleGerarPdf(pedido)}
@@ -1038,18 +1135,42 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                         Produtos do Pedido #{pedido.idSaida}
                       </p>
                       <div className="divide-y divide-slate-800/80">
-                        {pedido.itens.map((item, idx) => (
-                          <div key={item.id || idx} className="py-2 space-y-1">
-                            <div className="flex justify-between font-semibold text-slate-100">
-                              <span>{item.produto}</span>
-                              <span className="font-mono text-amber-300">{formatarMoeda(item.precoVenda)}</span>
+                        {pedido.itens.map((item, idx) => {
+                          const isVendaItem = (item.tipoSaida || pedido.tipoSaida || '').toLowerCase() === 'venda';
+                          return (
+                            <div key={item.id || idx} className="py-2.5 space-y-1.5">
+                              <div className="flex items-center justify-between font-semibold text-slate-100 gap-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span>{item.produto}</span>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                    isVendaItem
+                                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                      : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                                  }`}>
+                                    {item.tipoSaida || pedido.tipoSaida}
+                                  </span>
+                                </div>
+                                <span className="font-mono text-amber-300">{formatarMoeda(item.precoVenda)}</span>
+                              </div>
+                              <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+                                <span>{item.embalagem} × {item.quantidade} un</span>
+                                <span>Uni: {formatarMoeda(item.precoUni)}</span>
+                              </div>
+                              {!isVendaItem && (
+                                <div className="pt-1 flex justify-end">
+                                  <button
+                                    onClick={() => handleConverterItemEmVenda(pedido, idx)}
+                                    className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-extrabold text-xs rounded-lg shadow flex items-center gap-1.5 transition-all min-h-[38px]"
+                                    title="Tornar apenas este item em Venda com faturamento"
+                                  >
+                                    <ShoppingBag className="w-3.5 h-3.5 text-slate-950" />
+                                    <span>Tornar este item Venda</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                            <div className="flex justify-between text-[11px] text-slate-400 font-mono">
-                              <span>{item.embalagem} × {item.quantidade} un</span>
-                              <span>Uni: {formatarMoeda(item.precoUni)}</span>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1170,9 +1291,21 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                           </span>
                         </td>
 
-                        {/* COLUNA AÇÕES: PDF, EDITA, DELETA */}
+                        {/* COLUNA AÇÕES: PDF, TORNAR VENDA, EDITA, DELETA */}
                         <td className="px-4 py-3.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center space-x-1.5">
+                            {/* Botão Tornar Venda em Pedidos Consignados */}
+                            {(isConsignado || pedido.itens.some(it => (it.tipoSaida || '').toLowerCase() === 'consignado')) && (
+                              <button
+                                onClick={() => handleConverterPedidoEmVenda(pedido)}
+                                className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 text-xs font-bold rounded-lg shadow-md transition-all flex items-center gap-1.5 shrink-0"
+                                title="Tornar este pedido consignado em Venda faturada"
+                              >
+                                <ShoppingBag className="w-3.5 h-3.5 text-slate-950" />
+                                <span className="hidden xl:inline">Tornar Venda</span>
+                              </button>
+                            )}
+
                             {/* Botão PDF */}
                             <button
                               onClick={() => handleGerarPdf(pedido)}
@@ -1361,7 +1494,162 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                     </button>
                                   </div>
 
-                                  <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 shadow-inner max-w-full">
+                                  {/* CARDS DE ITENS PARA DISPOSITIVOS MÓVEIS (CELULAR) */}
+                                  <div className="block md:hidden space-y-3">
+                                    {formEdicao.itens.map((item, idx) => {
+                                      const isVenda = (item.tipoSaida || '').toLowerCase() === 'venda';
+                                      return (
+                                        <div
+                                          key={item.id || idx}
+                                          className={`bg-slate-950 border rounded-xl p-3.5 space-y-3 shadow-md ${
+                                            isVenda ? 'border-emerald-500/40 border-l-4 border-l-emerald-500' : 'border-purple-500/40 border-l-4 border-l-purple-500'
+                                          }`}
+                                        >
+                                          {/* Cabeçalho do Card: Número, Botão Tornar Venda e Selector de Tipo */}
+                                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                                            <div className="flex items-center gap-2">
+                                              <span className="w-6 h-6 rounded-full bg-slate-900 border border-slate-700 text-amber-300 text-xs font-bold font-mono flex items-center justify-center">
+                                                {idx + 1}
+                                              </span>
+                                              <span className="text-xs font-bold text-slate-200">Item #{idx + 1}</span>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5">
+                                              {/* Botão de Destaque "Tornar Venda" no celular se não for Venda */}
+                                              {!isVenda && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => recalculareAtualizarItemForm(idx, 'tipoSaida', 'Venda')}
+                                                  className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded-lg text-xs font-extrabold shadow-md transition-all flex items-center gap-1 shrink-0"
+                                                  title="Converter este item em Venda"
+                                                >
+                                                  <ShoppingBag className="w-3.5 h-3.5 text-slate-950" />
+                                                  <span>Tornar Venda</span>
+                                                </button>
+                                              )}
+
+                                              {/* Selector de Tipo do Item */}
+                                              <select
+                                                value={item.tipoSaida || formEdicao.tipoSaida}
+                                                onChange={(e) => recalculareAtualizarItemForm(idx, 'tipoSaida', e.target.value)}
+                                                className={`bg-slate-900 border rounded-lg px-2 py-1.5 text-xs font-semibold focus:outline-none ${
+                                                  isVenda
+                                                    ? 'border-emerald-500/50 text-emerald-300'
+                                                    : 'border-purple-500/50 text-purple-300'
+                                                }`}
+                                              >
+                                                <option value="Consignado">Consignado</option>
+                                                <option value="Venda">Venda</option>
+                                                <option value="Amostra Grátis">Amostra Grátis</option>
+                                                <option value="Mostruário">Mostruário</option>
+                                                <option value="Bonificação">Bonificação</option>
+                                              </select>
+
+                                              {/* Botão Excluir Item */}
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoverItemForm(idx)}
+                                                disabled={formEdicao.itens.length <= 1}
+                                                className="p-1.5 bg-slate-900 hover:bg-rose-500/20 text-rose-400 border border-slate-800 rounded-lg transition-colors disabled:opacity-30"
+                                                title="Remover item"
+                                              >
+                                                <Trash2 className="w-4 h-4" />
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {/* Entradas: Produto e Embalagem */}
+                                          <div className="space-y-2.5">
+                                            <div>
+                                              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                                                Produto
+                                              </label>
+                                              <select
+                                                value={item.produto}
+                                                onChange={(e) => recalculareAtualizarItemForm(idx, 'produto', e.target.value)}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-medium focus:outline-none focus:border-amber-400"
+                                              >
+                                                {listas.produtos.map(p => (
+                                                  <option key={p} value={p}>{p}</option>
+                                                ))}
+                                              </select>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                              <div>
+                                                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                                                  Embalagem
+                                                </label>
+                                                <select
+                                                  value={item.embalagem}
+                                                  onChange={(e) => recalculareAtualizarItemForm(idx, 'embalagem', e.target.value)}
+                                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-medium focus:outline-none focus:border-amber-400"
+                                                >
+                                                  {listas.embalagens.map(emb => (
+                                                    <option key={emb} value={emb}>{emb}</option>
+                                                  ))}
+                                                </select>
+                                              </div>
+
+                                              <div>
+                                                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                                                  Quantidade
+                                                </label>
+                                                <input
+                                                  type="text"
+                                                  inputMode="numeric"
+                                                  value={item.quantidade ?? ''}
+                                                  onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    if (val === '' || /^\d*$/.test(val)) {
+                                                      recalculareAtualizarItemForm(idx, 'quantidade', val);
+                                                    }
+                                                  }}
+                                                  placeholder="1"
+                                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-right text-slate-100 font-mono font-bold focus:outline-none focus:border-amber-400"
+                                                />
+                                              </div>
+                                            </div>
+
+                                            <div>
+                                              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                                                Modificador R$ (- Desconto / + Adicional)
+                                              </label>
+                                              <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={item.modificador ?? ''}
+                                                onChange={(e) => {
+                                                  const val = e.target.value;
+                                                  if (val === '' || val === '-' || /^-?\d*([.,]\d*)?$/.test(val)) {
+                                                    recalculareAtualizarItemForm(idx, 'modificador', val);
+                                                  }
+                                                }}
+                                                placeholder="0.00"
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-right font-mono text-slate-100 focus:outline-none focus:border-amber-400"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Valores Calculados */}
+                                          <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 flex items-center justify-between text-xs font-mono">
+                                            <div className="text-slate-400">
+                                              Uni: <span className="text-slate-200">{formatarMoeda(item.precoUni)}</span>
+                                            </div>
+                                            <div className="text-slate-400">
+                                              Venda: <span className="text-amber-300 font-bold">{formatarMoeda(item.precoVenda)}</span>
+                                            </div>
+                                            <div className="text-slate-400">
+                                              Comissão: <span className="text-emerald-400 font-bold">{formatarMoeda(item.comissao)}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* TABELA EDITÁVEL DE ITENS DO PEDIDO EM DESKTOP */}
+                                  <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 shadow-inner max-w-full">
                                     <table className="w-full min-w-[980px] text-left text-xs border-collapse">
                                       <thead className="bg-slate-900 text-slate-400 font-mono text-[11px] uppercase border-b border-slate-800">
                                         <tr>
@@ -1525,8 +1813,39 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                   </span>
                                 </div>
 
-                                {/* Mini-tabela de Produtos (SEM A COLUNA ID ITEM) */}
-                                <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950">
+                                {/* CARDS MÓVEIS DE PRODUTOS NO MODO VISUALIZAÇÃO */}
+                                <div className="block md:hidden space-y-2.5">
+                                  {pedido.itens.map((item, idx) => {
+                                    const isVendaItem = (item.tipoSaida || pedido.tipoSaida || '').toLowerCase() === 'venda';
+                                    return (
+                                      <div key={item.id || idx} className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2 text-xs">
+                                        <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-1.5">
+                                          <div className="font-semibold text-slate-100 truncate">{item.produto}</div>
+                                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border shrink-0 ${
+                                            isVendaItem
+                                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                              : 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                                          }`}>
+                                            {item.tipoSaida || pedido.tipoSaida}
+                                          </span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-slate-300">
+                                          <div>Embalagem: <strong className="text-slate-100">{item.embalagem}</strong></div>
+                                          <div>Qtd: <strong className="text-slate-100 font-mono">{item.quantidade}</strong></div>
+                                          <div>Preço Uni: <span className="font-mono">{formatarMoeda(item.precoUni)}</span></div>
+                                          <div>Modificador: <span className="font-mono">{item.modificador !== 0 ? formatarMoeda(item.modificador) : 'R$ 0,00'}</span></div>
+                                        </div>
+                                        <div className="flex items-center justify-between bg-slate-900 border border-slate-800 px-2.5 py-1.5 rounded font-mono font-bold text-xs">
+                                          <span className="text-amber-300">Venda: {formatarMoeda(item.precoVenda)}</span>
+                                          <span className="text-emerald-400">Comissão: {formatarMoeda(item.comissao)}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Mini-tabela de Produtos em Desktop (SEM A COLUNA ID ITEM) */}
+                                <div className="hidden md:block overflow-x-auto rounded-lg border border-slate-800 bg-slate-950">
                                   <table className="w-full text-left text-xs">
                                     <thead className="bg-slate-900 text-slate-400 font-mono text-[11px] uppercase border-b border-slate-800">
                                       <tr>
@@ -1553,6 +1872,17 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                             }`}>
                                               {item.tipoSaida || pedido.tipoSaida}
                                             </span>
+                                            {(item.tipoSaida || pedido.tipoSaida || '').toLowerCase() !== 'venda' && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleConverterItemEmVenda(pedido, idx)}
+                                                className="ml-2 px-2 py-0.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded text-[11px] font-extrabold shadow transition-all inline-flex items-center gap-1 shrink-0"
+                                                title="Tornar este item uma Venda com faturamento"
+                                              >
+                                                <ShoppingBag className="w-3 h-3 text-slate-950" />
+                                                <span>Tornar Venda</span>
+                                              </button>
+                                            )}
                                           </td>
                                           <td className="px-3.5 py-2.5 text-right font-mono font-bold text-slate-100">{item.quantidade}</td>
                                           <td className="px-3.5 py-2.5 text-right font-mono text-slate-300">{formatarMoeda(item.precoUni)}</td>

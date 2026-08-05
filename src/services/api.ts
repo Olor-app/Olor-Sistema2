@@ -89,7 +89,7 @@ export const DEFAULT_USUARIOS: User[] = [
   }
 ];
 
-// Mock de vendas iniciais para primeira visualização limpa
+// Mock de vendas iniciais para primeira visualização limpa (incluindo vendas diretas e consignados)
 export const DEFAULT_VENDAS_INICIAIS: Venda[] = [
   {
     id: 'VEN-20260724-001',
@@ -109,7 +109,53 @@ export const DEFAULT_VENDAS_INICIAIS: Venda[] = [
     dia: 24,
     mes: 7,
     ano: 2026,
-    obs: 'Cliente parceiro Olor Luz'
+    obs: 'Cliente parceiro Olor Luz',
+    clienteInfluenciador: 'Loja Essência & Co',
+    contato: '(11) 98765-4321'
+  },
+  {
+    id: 'VEN-20260725-002',
+    data: '2026-07-25',
+    idSaida: 'SAI-20260725-1002',
+    vendedor: 'Rosa',
+    tipoSaida: 'Consignado',
+    tabelaPreco: 'Consignado',
+    produto: 'Água de Lençóis 500 ml',
+    embalagem: 'Água de Lençóis 500 ml',
+    quantidade: 5,
+    modificador: 0,
+    precoUni: 0,
+    precoVenda: 0,
+    comissao: 0,
+    statusComissao: 'Pendente',
+    dia: 25,
+    mes: 7,
+    ano: 2026,
+    obs: 'Consignado em loja parceira',
+    clienteInfluenciador: 'Boutique Aromas do Sul',
+    contato: '(11) 97777-8888'
+  },
+  {
+    id: 'VEN-20260726-003',
+    data: '2026-07-26',
+    idSaida: 'SAI-20260726-1003',
+    vendedor: 'Olor Luz',
+    tipoSaida: 'Consignado',
+    tabelaPreco: 'Consignado',
+    produto: 'Difusor Eletrico Branco + Essencia',
+    embalagem: 'Difusor Eletrico',
+    quantidade: 2,
+    modificador: 0,
+    precoUni: 0,
+    precoVenda: 0,
+    comissao: 0,
+    statusComissao: '',
+    dia: 26,
+    mes: 7,
+    ano: 2026,
+    obs: 'Mostruário consignado',
+    clienteInfluenciador: 'Espaço Zen',
+    contato: '(11) 96666-5555'
   }
 ];
 
@@ -151,8 +197,6 @@ export function getAppsScriptUrl(): string {
 }
 
 export function setAppsScriptUrl(_url: string): void {}
-
-export function saveLocalVendas(_vendas: Venda[]): void {}
 
 export async function testarConexaoApi(_url?: string): Promise<{ success: boolean; message: string }> {
   return { success: true, message: 'Backend Firebase NoSQL Ativo e Conectado' };
@@ -458,17 +502,41 @@ export async function salvarListasCustomizadasApi(
   }
 }
 
-// Fallback local vendas (stub)
+const STORAGE_KEY_VENDAS = 'olorluz_vendas_data';
+
+// --- CONTROLE E PERSISTÊNCIA LOCAL DE VENDAS ---
 export function getLocalVendas(): Venda[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_VENDAS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.error('Erro ao carregar vendas do localStorage:', e);
+  }
   return DEFAULT_VENDAS_INICIAIS;
 }
 
-// --- OPTIMISTIC UI: SALVAR LOTE DE VENDAS NO FIRESTORE ---
+export function saveLocalVendas(vendas: Venda[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_VENDAS, JSON.stringify(vendas));
+  } catch (e) {
+    console.error('Erro ao salvar vendas no localStorage:', e);
+  }
+}
+
+// --- OPTIMISTIC UI: SALVAR LOTE DE VENDAS NO FIRESTORE & LOCAL ---
 export async function salvarLoteVendas(vendasParaSalvar: Venda[]): Promise<{
   success: boolean;
   message: string;
   vendasSalvas: Venda[];
 }> {
+  // Sincroniza em cache local imediatamente
+  const vendasAtuais = getLocalVendas();
+  const vendasAtualizadas = [...vendasParaSalvar, ...vendasAtuais];
+  saveLocalVendas(vendasAtualizadas);
+
   try {
     // Escrita em background no Firestore
     const promises = vendasParaSalvar.map(async (venda) => {
@@ -501,34 +569,39 @@ export async function salvarLoteVendas(vendasParaSalvar: Venda[]): Promise<{
 
     return {
       success: true,
-      message: `Lote com ${vendasParaSalvar.length} produto(s) registrado com sucesso no Firebase!`,
+      message: `Lote com ${vendasParaSalvar.length} produto(s) registrado com sucesso!`,
       vendasSalvas: vendasComId
     };
   } catch (err: any) {
     console.error('Erro ao salvar vendas no Firestore:', err);
-    // Retorna sucesso para o Optimistic UI continuar funcionando se houver oscilação de rede
     return {
       success: true,
-      message: `Registrado no sistema! (Sincronizando com Firestore em background)`,
+      message: `Registrado localmente no sistema com sucesso!`,
       vendasSalvas: vendasParaSalvar
     };
   }
 }
 
-// --- ATUALIZAR PEDIDO NO FIRESTORE ---
+// --- ATUALIZAR PEDIDO NO FIRESTORE & LOCAL ---
 export async function atualizarPedidoApi(
   idSaida: string,
   novosItens: Venda[]
 ): Promise<{ success: boolean; message: string }> {
+  // 1. Atualiza no cache local imediatamente
+  const vendasAtuais = getLocalVendas();
+  const vendasSemPedido = vendasAtuais.filter(item => item.idSaida !== idSaida && item.id !== idSaida);
+  const vendasAtualizadas = [...novosItens, ...vendasSemPedido];
+  saveLocalVendas(vendasAtualizadas);
+
   try {
-    // 1. Busca e deleta os itens antigos com este idSaida
+    // 2. Busca e deleta os itens antigos com este idSaida no Firestore
     const q = query(collection(db, 'vendas'), where('idSaida', '==', idSaida));
     const querySnap = await getDocs(q);
 
     const deletePromises = querySnap.docs.map(docSnap => deleteDoc(doc(db, 'vendas', docSnap.id)));
     await Promise.all(deletePromises);
 
-    // 2. Insere os novos itens atualizados
+    // 3. Insere os novos itens atualizados
     const addPromises = novosItens.map(item => addDoc(collection(db, 'vendas'), {
       data: item.data,
       idSaida: idSaida,
@@ -556,19 +629,24 @@ export async function atualizarPedidoApi(
 
     return {
       success: true,
-      message: 'Pedido atualizado com sucesso no Firebase!'
+      message: 'Pedido atualizado com sucesso no sistema!'
     };
   } catch (err: any) {
     console.error('Erro ao atualizar pedido no Firestore:', err);
     return {
       success: true,
-      message: 'Pedido atualizado no sistema!'
+      message: 'Pedido atualizado no sistema local com sucesso!'
     };
   }
 }
 
-// --- EXCLUIR PEDIDO NO FIRESTORE ---
+// --- EXCLUIR PEDIDO NO FIRESTORE & LOCAL ---
 export async function excluirPedidoApi(idSaida: string): Promise<{ success: boolean; message: string }> {
+  // 1. Remove do cache local imediatamente
+  const vendasAtuais = getLocalVendas();
+  const vendasFiltradas = vendasAtuais.filter(item => item.idSaida !== idSaida && item.id !== idSaida);
+  saveLocalVendas(vendasFiltradas);
+
   try {
     const q = query(collection(db, 'vendas'), where('idSaida', '==', idSaida));
     const querySnap = await getDocs(q);
@@ -578,13 +656,13 @@ export async function excluirPedidoApi(idSaida: string): Promise<{ success: bool
 
     return {
       success: true,
-      message: `Pedido ${idSaida} excluído com sucesso do Firebase!`
+      message: `Pedido ${idSaida} excluído com sucesso!`
     };
   } catch (err: any) {
     console.error('Erro ao excluir pedido no Firestore:', err);
     return {
       success: true,
-      message: 'Pedido removido localmente.'
+      message: 'Pedido removido localmente com sucesso.'
     };
   }
 }
