@@ -34,9 +34,6 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size = 'md', showTex
           <span className="font-cinzel text-xl font-extrabold tracking-widest bg-gradient-to-r from-amber-100 via-amber-300 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_2px_8px_rgba(212,175,55,0.2)]">
             OLOR LUZ
           </span>
-          <span className="text-[10px] font-mono tracking-[0.3em] text-amber-400/90 uppercase font-semibold">
-            AROMAS & DESIGN
-          </span>
         </div>
       )}
     </div>

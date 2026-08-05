@@ -9,7 +9,6 @@ import { PriceMatrix } from './components/PriceMatrix';
 import { ListasManagement } from './components/ListasManagement';
 import { UserManagement } from './components/UserManagement';
 import { LoginScreen } from './components/LoginScreen';
-import { Logo } from './components/Logo';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { AlertTriangle, Sparkles, RefreshCw, Database, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
@@ -118,12 +117,12 @@ export default function App() {
       />
 
       {/* ÁREA DE CONTEÚDO PRINCIPAL NA DIREITA */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen max-w-full overflow-x-hidden">
         
-        {/* CABEÇALHO DO TOPO */}
-        <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-4 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* CABEÇALHO DO TOPO DA TELA (Limpo e Focado no Título) */}
+        <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-3 sm:px-8 py-2.5 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4">
           
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center justify-center sm:justify-start space-x-3 w-full sm:w-auto">
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
               className="hidden lg:flex p-2 bg-slate-950 hover:bg-slate-800 text-amber-400 hover:text-amber-300 border border-slate-800 rounded-xl transition-all"
@@ -132,10 +131,8 @@ export default function App() {
               {isCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
             </button>
 
-            <Logo size="md" />
-            <div className="hidden sm:block h-8 w-px bg-slate-800" />
-            <div>
-              <h1 className="font-cinzel text-xl sm:text-2xl font-bold text-amber-200 tracking-wider">
+            <div className="text-center sm:text-left">
+              <h1 className="font-cinzel text-base sm:text-xl lg:text-2xl font-bold text-amber-200 tracking-wider text-center sm:text-left">
                 {activeTab === 'dashboard' && 'Dashboard de Vendas'}
                 {activeTab === 'historico' && 'Histórico de Saídas (BD_Vendas)'}
                 {activeTab === 'nova-venda' && 'Lançamento de Nova Saída / Pedido'}
@@ -143,13 +140,13 @@ export default function App() {
                 {activeTab === 'listas' && 'Gestão de Listas do Sistema'}
                 {activeTab === 'gestao-usuarios' && 'Gestão de Usuários & Acessos (RBAC)'}
               </h1>
-              <p className="text-xs text-slate-400">
-                SIG Olor Luz — Logado como <strong className="text-amber-300">{currentUser.nome}</strong> ({currentUser.tipo})
+              <p className="text-xs text-slate-400 hidden sm:block">
+                Logado como <strong className="text-amber-300">{currentUser.nome}</strong> ({currentUser.tipo})
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3 self-end sm:self-auto">
+          <div className="hidden sm:flex items-center space-x-3 self-end sm:self-auto">
             <button
               onClick={carregarDados}
               disabled={loading}
@@ -157,13 +154,8 @@ export default function App() {
               title="Sincronizar com Firebase Firestore"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
-              <span className="hidden md:inline">{loading ? 'Carregando...' : 'Atualizar Dados'}</span>
+              <span>{loading ? 'Carregando...' : 'Atualizar Dados'}</span>
             </button>
-
-            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold border bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
-              <Database className="w-3.5 h-3.5" />
-              <span>Firebase Conectado</span>
-            </div>
           </div>
 
         </header>
@@ -179,7 +171,7 @@ export default function App() {
         )}
 
         {/* ÁREA DE CONTEÚDO DE CADA ABA */}
-        <main className="flex-1 p-3 sm:p-6 lg:p-8 space-y-6 lg:space-y-8 max-w-7xl w-full mx-auto pb-28 lg:pb-8">
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 space-y-6 lg:space-y-8 max-w-7xl w-full mx-auto pb-28 lg:pb-8 overflow-x-hidden">
           
           {/* 1. DASHBOARD */}
           {activeTab === 'dashboard' && (

@@ -287,20 +287,20 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl text-slate-100 max-w-5xl mx-auto">
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-6 shadow-xl text-slate-100 max-w-5xl mx-auto w-full max-w-full overflow-hidden">
       
       {/* Cabeçalho do Formulário */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-800 mb-6 gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 mb-5 gap-3">
         <div>
-          <h2 className="text-xl font-bold text-amber-200 flex items-center gap-2">
-            <Calculator className="w-6 h-6 text-amber-400" />
-            Lançamento de Saída / Pedido Multiprofuto
+          <h2 className="text-lg sm:text-xl font-bold text-amber-200 flex items-center gap-2">
+            <Calculator className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 shrink-0" />
+            <span>Lançamento de Saída / Pedido Multiproduto</span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             Cadastre múltiplos produtos em uma única saída ({vendedor ? `Vendedor: ${vendedor}` : 'Selecione o vendedor'}). Todos os itens compartilharão o mesmo <span className="text-amber-300 font-mono">ID_Saida</span>.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <span className="text-xs bg-amber-500/10 text-amber-300 border border-amber-500/30 px-3 py-1 rounded-full font-semibold flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5" />
             {itens.length} {itens.length === 1 ? 'Produto no Pedido' : 'Produtos no Pedido'}
@@ -403,16 +403,18 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
             <button
               type="button"
               onClick={() => setMostrarDadosAdicionais(!mostrarDadosAdicionais)}
-              className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1.5 transition-colors bg-slate-900 border border-slate-800 hover:border-amber-500/30 px-3 py-1.5 rounded-lg active:scale-95"
+              className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center justify-between gap-2 transition-colors bg-slate-900 border border-slate-800 hover:border-amber-500/30 px-3 py-2 rounded-xl active:scale-95 w-full sm:w-auto text-left min-h-[44px]"
             >
-              <UserPlus className="w-3.5 h-3.5 text-amber-400" />
-              <span>{mostrarDadosAdicionais ? 'Ocultar Dados Adicionais' : 'Dados Adicionais (+ Cliente/Influenciador, Contato)'}</span>
-              {mostrarDadosAdicionais ? <ChevronUp className="w-3.5 h-3.5 text-amber-400" /> : <ChevronDown className="w-3.5 h-3.5 text-amber-400" />}
-              {(clienteInfluenciador || contato) && (
-                <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-amber-500/20 text-amber-300 rounded font-mono">
-                  Preenchido
-                </span>
-              )}
+              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                <UserPlus className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="truncate">{mostrarDadosAdicionais ? 'Ocultar Dados Adicionais' : 'Dados Adicionais (Cliente / Contato)'}</span>
+                {(clienteInfluenciador || contato) && (
+                  <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-amber-500/20 text-amber-300 rounded font-mono shrink-0">
+                    Preenchido
+                  </span>
+                )}
+              </div>
+              {mostrarDadosAdicionais ? <ChevronUp className="w-4 h-4 text-amber-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-amber-400 shrink-0" />}
             </button>
 
             {mostrarDadosAdicionais && (
@@ -450,16 +452,16 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-amber-400" />
-              2. Produtos Vendidos ({itens.length})
+              <Layers className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>2. Produtos Vendidos ({itens.length})</span>
             </span>
             <button
               type="button"
               onClick={handleAdicionarProduto}
-              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow transition-all active:scale-95"
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow transition-all active:scale-95 min-h-[44px]"
             >
               <Plus className="w-4 h-4" />
-              Novo Produto
+              <span>+ Novo Produto</span>
             </button>
           </div>
 
@@ -474,49 +476,36 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
               return (
                 <div
                   key={item.idTemp}
-                  className="bg-slate-950 border border-slate-800 rounded-xl p-4 transition-all hover:border-slate-700 space-y-3"
+                  className="bg-slate-950 border border-slate-800 rounded-xl p-3 sm:p-4 transition-all hover:border-slate-700 space-y-3"
                 >
                   {/* Cabeçalho do Item e Grade de Entradas */}
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-800/60">
+                  <div className="flex flex-col gap-2.5 pb-3 border-b border-slate-800/60">
                     
-                    {/* Badge do Número do Item */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 text-amber-300 text-xs font-bold flex items-center justify-center font-mono">
-                        {index + 1}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-300">
-                        Produto #{index + 1}
-                      </span>
-                    </div>
-
-                    {/* Resumo Rápido e Botões de Ação da Linha */}
-                    <div className="flex items-center justify-between lg:justify-end gap-3 w-full lg:w-auto">
-                      <div className="flex items-center gap-3 text-xs bg-slate-900 border border-slate-800 px-3 py-1 rounded-lg">
-                        <span className="text-slate-400">Total:</span>
-                        <span className="font-bold text-amber-200 font-mono">
-                          {formatarMoeda(calc.precoVenda)}
+                    {/* Linha Superior: Título do Item + Botões de Ação */}
+                    <div className="flex items-center justify-between gap-2 w-full">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 text-amber-300 text-xs font-bold flex items-center justify-center font-mono shrink-0">
+                          {index + 1}
                         </span>
-                        <span className="text-slate-600">|</span>
-                        <span className="text-slate-400">Comissão:</span>
-                        <span className="font-bold text-emerald-400 font-mono">
-                          {formatarMoeda(calc.comissao)}
+                        <span className="text-xs font-bold text-slate-200">
+                          Produto #{index + 1}
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {/* Botão de Expandir / Esconder Detalhes Calculados */}
                         <button
                           type="button"
                           onClick={() => handleToggleExpandir(item.idTemp)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1 ${
+                          className={`px-3 py-2 rounded-xl text-xs font-medium border transition-colors flex items-center gap-1.5 min-h-[44px] ${
                             item.expandido
                               ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                               : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
                           }`}
                           title="Expandir/Minimizar cálculos detalhados"
                         >
-                          <Info className="w-3.5 h-3.5" />
-                          <span>{item.expandido ? 'Ocultar Detalhes' : 'Detalhes'}</span>
+                          <Info className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{item.expandido ? 'Ocultar' : 'Detalhes'}</span>
                           {item.expandido ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </button>
 
@@ -525,13 +514,31 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
                           type="button"
                           onClick={() => handleRemoverProduto(item.idTemp)}
                           disabled={itens.length <= 1}
-                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:hover:text-slate-400 disabled:hover:bg-transparent"
+                          className="p-2.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 bg-slate-900 border border-slate-800 rounded-xl transition-colors disabled:opacity-30 disabled:hover:text-slate-400 disabled:hover:bg-transparent min-h-[44px] min-w-[44px] flex items-center justify-center"
                           title={itens.length <= 1 ? 'O pedido precisa ter ao menos 1 produto' : 'Remover este produto'}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
+
+                    {/* Linha Inferior: Resumo Rápido dos Valores da Linha */}
+                    <div className="flex items-center justify-between gap-2 text-xs bg-slate-900 border border-slate-800/90 px-3 py-2 rounded-xl font-mono w-full">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-slate-400 text-[11px]">Total:</span>
+                        <span className="font-bold text-amber-200 truncate">
+                          {formatarMoeda(calc.precoVenda)}
+                        </span>
+                      </div>
+                      <span className="text-slate-700">|</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-slate-400 text-[11px]">Comissão:</span>
+                        <span className="font-bold text-emerald-400 truncate">
+                          {formatarMoeda(calc.comissao)}
+                        </span>
+                      </div>
+                    </div>
+
                   </div>
 
                   {/* Campos Editáveis Principais do Produto */}

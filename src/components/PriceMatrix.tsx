@@ -181,7 +181,7 @@ export const PriceMatrix: React.FC<PriceMatrixProps> = ({ listas, onRefresh }) =
   );
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-slate-100 max-w-6xl mx-auto space-y-6">
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-6 shadow-2xl text-slate-100 max-w-6xl mx-auto space-y-5 sm:space-y-6 w-full max-w-full overflow-hidden">
       
       {/* CABEÇALHO */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between pb-5 border-b border-slate-800 gap-4">
@@ -340,7 +340,7 @@ export const PriceMatrix: React.FC<PriceMatrixProps> = ({ listas, onRefresh }) =
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-900 text-slate-400 font-mono font-semibold border-b border-slate-800 uppercase">
               <tr>
-                <th className="px-5 py-4 bg-slate-900/90 text-amber-300 min-w-[200px]">
+                <th className="px-3 sm:px-5 py-4 sticky left-0 z-20 bg-slate-900 text-amber-300 w-[42vw] max-w-[42vw] sm:w-auto sm:max-w-none sm:min-w-[200px] border-r border-slate-800 shadow-[2px_0_8px_rgba(0,0,0,0.5)] leading-snug">
                   Embalagem
                 </th>
                 {TABELAS_EXIBICAO.map((tab) => (
@@ -367,8 +367,8 @@ export const PriceMatrix: React.FC<PriceMatrixProps> = ({ listas, onRefresh }) =
 
                   return (
                     <tr key={emb} className="hover:bg-slate-900/50 transition-colors group">
-                      <td className="px-5 py-3.5 font-bold text-slate-200 bg-slate-900/20 whitespace-nowrap">
-                        <span className="text-slate-100">{emb}</span>
+                      <td className="px-3 sm:px-5 py-3.5 sticky left-0 z-10 bg-slate-950 group-hover:bg-slate-900 font-bold text-slate-200 border-r border-slate-800 shadow-[2px_0_8px_rgba(0,0,0,0.5)] w-[42vw] max-w-[42vw] sm:w-auto sm:max-w-none sm:min-w-[200px] whitespace-normal break-words">
+                        <span className="text-slate-100 break-words block leading-tight text-[11px] sm:text-xs">{emb}</span>
                       </td>
 
                       {TABELAS_EXIBICAO.map((tab) => {
