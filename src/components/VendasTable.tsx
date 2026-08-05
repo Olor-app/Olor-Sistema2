@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Venda, ListasSelects, User as UserAccount } from '../types';
 import { formatarMoeda, formatarDataBR } from '../utils/calculations';
-import { excluirPedidoApi, atualizarPedidoApi, buscarPrecoUnitario, DEFAULT_LISTAS } from '../services/api';
+import { excluirPedidoApi, atualizarPedidoApi, buscarPrecoUnitario, DEFAULT_LISTAS, limparTodasVendasApi } from '../services/api';
 import html2pdf from 'html2pdf.js';
 import { 
   Search, 
@@ -816,6 +816,29 @@ export const VendasTable: React.FC<VendasTableProps> = ({
     }
   };
 
+  const [zerandoBanco, setZerandoBanco] = useState(false);
+
+  const handleZerarBancoVendas = async () => {
+    if (!window.confirm('⚠️ ATENÇÃO: Tem certeza que deseja APAGAR TODOS os registros de vendas/saídas do banco de dados (BD_Vendas)? Esta ação zerará toda a base de dados e não poderá ser desfeita.')) {
+      return;
+    }
+
+    setZerandoBanco(true);
+    try {
+      const res = await limparTodasVendasApi();
+      if (res.success) {
+        mostrarToast('success', res.message);
+        onRefresh();
+      } else {
+        mostrarToast('error', res.message);
+      }
+    } catch (err: any) {
+      mostrarToast('error', `Erro ao zerar banco de vendas: ${err.message || err}`);
+    } finally {
+      setZerandoBanco(false);
+    }
+  };
+
   return (
     <div className="space-y-6 relative">
 
@@ -959,11 +982,23 @@ export const VendasTable: React.FC<VendasTableProps> = ({
             onClick={onRefresh}
             disabled={loading}
             className="p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-200 transition-colors flex items-center gap-1.5 text-xs font-semibold"
-            title="Atualizar dados da planilha"
+            title="Atualizar dados do sistema"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-amber-400' : ''}`} />
             <span className="hidden sm:inline">Atualizar</span>
           </button>
+
+          {isMaster && (
+            <button
+              onClick={handleZerarBancoVendas}
+              disabled={zerandoBanco || loading}
+              className="p-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800/60 rounded-xl text-rose-300 hover:text-rose-200 transition-colors flex items-center gap-1.5 text-xs font-semibold shadow-sm"
+              title="Apagar TODOS os registros do BD_Vendas (Zerar Banco)"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden sm:inline">Zerar BD_Vendas</span>
+            </button>
+          )}
 
         </div>
       </div>

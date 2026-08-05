@@ -417,10 +417,14 @@ export async function fetchListasEVendas(): Promise<{
       });
     }
 
-    // Se a coleção vendas no Firestore estiver vazia para o primeiro uso, fornece DEFAULT_VENDAS_INICIAIS
-    if (vendasResult.length === 0) {
+    // Se a coleção vendas no Firestore estiver vazia, só insere DEFAULT_VENDAS_INICIAIS no primeiro acesso absoluto (quando nunca foi inicializado)
+    const foiInicializado = localStorage.getItem('olorluz_vendas_initialized') === 'true' || localStorage.getItem(STORAGE_KEY_VENDAS) !== null;
+
+    if (vendasResult.length === 0 && !foiInicializado) {
       if (!currentUser || currentUser.tipo === 'Master') {
         vendasResult = DEFAULT_VENDAS_INICIAIS;
+        localStorage.setItem('olorluz_vendas_initialized', 'true');
+        localStorage.setItem(STORAGE_KEY_VENDAS, JSON.stringify(DEFAULT_VENDAS_INICIAIS));
       }
     }
 
@@ -431,9 +435,10 @@ export async function fetchListasEVendas(): Promise<{
     };
   } catch (err: any) {
     console.error('Erro ao buscar vendas do Firestore:', err);
+    const foiInicializado = localStorage.getItem('olorluz_vendas_initialized') === 'true' || localStorage.getItem(STORAGE_KEY_VENDAS) !== null;
     return {
       listas: CURRENT_LISTAS,
-      vendas: DEFAULT_VENDAS_INICIAIS,
+      vendas: foiInicializado ? [] : DEFAULT_VENDAS_INICIAIS,
       isMock: true,
       error: `Firestore: ${err.message || 'Erro ao carregar dados'}`
     };
@@ -504,34 +509,79 @@ export async function salvarListasCustomizadasApi(
 
 const STORAGE_KEY_VENDAS = 'olorluz_vendas_data';
 
+/**
+ * Se um item de saída for do tipo 'Consignado' e possuir quantidade > 1,
+ * esta função desmembra esse item em N registros individuais (1 por unidade),
+ * permitindo conversão ("tornar venda") parcial de cada unidade individualmente.
+ */
+export function desmembrarItensConsignado(vendas: Venda[]): Venda[] {
+  const resultado: Venda[] = [];
+
+  for (const item of vendas) {
+    const isConsignado = (item.tipoSaida || '').trim().toLowerCase() === 'consignado';
+    const qtdNum = Math.round(Number(item.quantidade)) || 1;
+
+    if (isConsignado && qtdNum > 1) {
+      const modTotal = Number(item.modificador) || 0;
+      const modPorUnidade = modTotal / qtdNum;
+
+      for (let i = 0; i < qtdNum; i++) {
+        resultado.push({
+          ...item,
+          id: `${item.id || 'VEN'}-U${i + 1}`,
+          quantidade: 1,
+          modificador: modPorUnidade,
+          precoUni: 0,
+          precoVenda: 0,
+          comissao: 0
+        });
+      }
+    } else {
+      resultado.push(item);
+    }
+  }
+
+  return resultado;
+}
+
 // --- CONTROLE E PERSISTÊNCIA LOCAL DE VENDAS ---
 export function getLocalVendas(): Venda[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_VENDAS);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return desmembrarItensConsignado(parsed);
+      }
     }
   } catch (e) {
     console.error('Erro ao carregar vendas do localStorage:', e);
   }
-  return DEFAULT_VENDAS_INICIAIS;
+
+  if (localStorage.getItem('olorluz_vendas_initialized') === 'true') {
+    return [];
+  }
+
+  return desmembrarItensConsignado(DEFAULT_VENDAS_INICIAIS);
 }
 
 export function saveLocalVendas(vendas: Venda[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_VENDAS, JSON.stringify(vendas));
+    localStorage.setItem('olorluz_vendas_initialized', 'true');
   } catch (e) {
     console.error('Erro ao salvar vendas no localStorage:', e);
   }
 }
 
 // --- OPTIMISTIC UI: SALVAR LOTE DE VENDAS NO FIRESTORE & LOCAL ---
-export async function salvarLoteVendas(vendasParaSalvar: Venda[]): Promise<{
+export async function salvarLoteVendas(vendasParaSalvarOriginal: Venda[]): Promise<{
   success: boolean;
   message: string;
   vendasSalvas: Venda[];
 }> {
+  const vendasParaSalvar = desmembrarItensConsignado(vendasParaSalvarOriginal);
+
   // Sincroniza em cache local imediatamente
   const vendasAtuais = getLocalVendas();
   const vendasAtualizadas = [...vendasParaSalvar, ...vendasAtuais];
@@ -585,8 +635,10 @@ export async function salvarLoteVendas(vendasParaSalvar: Venda[]): Promise<{
 // --- ATUALIZAR PEDIDO NO FIRESTORE & LOCAL ---
 export async function atualizarPedidoApi(
   idSaida: string,
-  novosItens: Venda[]
+  novosItensOriginal: Venda[]
 ): Promise<{ success: boolean; message: string }> {
+  const novosItens = desmembrarItensConsignado(novosItensOriginal);
+
   // 1. Atualiza no cache local imediatamente
   const vendasAtuais = getLocalVendas();
   const vendasSemPedido = vendasAtuais.filter(item => item.idSaida !== idSaida && item.id !== idSaida);
@@ -663,6 +715,37 @@ export async function excluirPedidoApi(idSaida: string): Promise<{ success: bool
     return {
       success: true,
       message: 'Pedido removido localmente com sucesso.'
+    };
+  }
+}
+
+// --- ZERAR / LIMPAR TODAS AS VENDAS NO FIRESTORE E LOCAL ---
+export async function limparTodasVendasApi(): Promise<{ success: boolean; message: string }> {
+  // 1. Zera localmente
+  try {
+    localStorage.setItem(STORAGE_KEY_VENDAS, JSON.stringify([]));
+    localStorage.setItem('olorluz_vendas_initialized', 'true');
+  } catch (e) {
+    console.error('Erro ao zerar cache de vendas local:', e);
+  }
+
+  try {
+    // 2. Apaga TODOS os registros da coleção 'vendas' no Firestore
+    const vendasCol = collection(db, 'vendas');
+    const querySnap = await getDocs(vendasCol);
+
+    const deletePromises = querySnap.docs.map(docSnap => deleteDoc(doc(db, 'vendas', docSnap.id)));
+    await Promise.all(deletePromises);
+
+    return {
+      success: true,
+      message: 'Banco de dados BD_Vendas foi totalmente zerado com sucesso!'
+    };
+  } catch (err: any) {
+    console.error('Erro ao zerar banco de vendas no Firestore:', err);
+    return {
+      success: true,
+      message: 'Banco de dados zerado localmente com sucesso.'
     };
   }
 }

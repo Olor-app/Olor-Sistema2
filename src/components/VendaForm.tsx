@@ -398,6 +398,15 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
             </div>
           </div>
 
+          {tipoSaida === 'Consignado' && (
+            <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl text-purple-200 text-xs flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-purple-300 font-semibold">Saída Consignada:</strong> Se um produto for cadastrado com quantidade maior que 1 (ex: 5 unidades), o sistema registrará automaticamente 1 linha para cada unidade. Isso permitirá dar baixa ("Tornar Venda") de forma parcial ou total para cada peça individualmente no futuro.
+              </span>
+            </div>
+          )}
+
           {/* Botão de Toggle para Dados Adicionais (Minimizados por Padrão) */}
           <div className="pt-2 border-t border-slate-800/80">
             <button

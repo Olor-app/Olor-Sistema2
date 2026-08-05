@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { getAppsScriptUrl, setAppsScriptUrl, saveLocalVendas, DEFAULT_VENDAS_INICIAIS } from '../services/api';
-import { X, Database, CheckCircle2, AlertCircle, RefreshCw, Link as LinkIcon, Trash2 } from 'lucide-react';
+import { getAppsScriptUrl, setAppsScriptUrl, saveLocalVendas, DEFAULT_VENDAS_INICIAIS, limparTodasVendasApi } from '../services/api';
+import { X, Database, CheckCircle2, AlertCircle, RefreshCw, Link as LinkIcon, Trash2, RotateCcw } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -61,10 +61,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   };
 
   const handleResetLocal = () => {
-    if (window.confirm('Deseja restaurar as vendas de demonstração locais?')) {
+    if (window.confirm('Deseja carregar as vendas de demonstração de exemplo no sistema?')) {
       saveLocalVendas(DEFAULT_VENDAS_INICIAIS);
       onSaved();
       onClose();
+    }
+  };
+
+  const handleZerarBanco = async () => {
+    if (window.confirm('⚠️ ATENÇÃO: Deseja apagar TODOS os registros de vendas/saídas do banco de dados? Esta ação não pode ser desfeita.')) {
+      setTesting(true);
+      try {
+        await limparTodasVendasApi();
+        onSaved();
+        onClose();
+      } catch (err: any) {
+        alert(`Erro ao zerar banco: ${err.message || err}`);
+      } finally {
+        setTesting(false);
+      }
     }
   };
 
@@ -141,16 +156,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           </div>
         </div>
 
-        {/* Reset local data */}
-        <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={handleResetLocal}
-            className="text-xs text-slate-400 hover:text-rose-400 flex items-center gap-1 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Restaurar Vendas Locais</span>
-          </button>
+        {/* Action Controls for Data Clearing/Reset */}
+        <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleZerarBanco}
+              className="text-xs text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1 transition-colors"
+              title="Apagar todos os registros do BD_Vendas"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Zerar Banco de Vendas</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetLocal}
+              className="text-xs text-slate-400 hover:text-amber-300 flex items-center gap-1 transition-colors"
+              title="Carregar dados de exemplo"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Carregar Dados Exemplo</span>
+            </button>
+          </div>
 
           <div className="flex space-x-2">
             <button
