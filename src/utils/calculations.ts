@@ -35,18 +35,19 @@ export function calcularValoresVenda(
   const isOlorLuz = (vendedor || '').toString().trim().toLowerCase() === 'olor luz';
   const isAmostraGratis = tipoNorm === 'amostra grátis' || tipoNorm === 'amostra gratis';
 
-  // 1. Regra para Outras Saídas zeradas (Mostruário, Bonificação, etc., exceto Venda, Consignado e Amostra Grátis)
-  if (tipoNorm !== 'venda' && tipoNorm !== 'consignado' && !isAmostraGratis) {
+  // 1. Regra para Saídas não financeiras (Consignado, Amostra Grátis, Mostruário, Bonificação, etc.):
+  // Apenas saídas do tipo "Venda" geram faturamento financeiro e preço unitário no sistema.
+  if (tipoNorm !== 'venda') {
     return {
       precoUni: 0,
       subtotalBruto: 0,
       precoVenda: 0,
       comissao: 0,
-      regraAplicada: 'Outras Saídas: Valores financeiros zerados (R$ 0,00)',
+      regraAplicada: `${tipoSaida || 'Não Venda'}: Saída sem contabilização financeira de faturamento (R$ 0,00)`,
     };
   }
 
-  // 2. Cálculo do Valor dos Produtos para Venda, Consignado e Amostra Grátis
+  // 2. Cálculo do Valor dos Produtos para Saídas do tipo Venda
   const subtotalBruto = unitPrice * qtd;
   const precoVenda = Math.max(0, subtotalBruto + mod);
 
@@ -61,29 +62,7 @@ export function calcularValoresVenda(
     };
   }
 
-  // 4. Regra "Amostra Grátis" (Custo da empresa, calcula valor normal dos produtos, sem comissão)
-  if (isAmostraGratis) {
-    return {
-      precoUni: unitPrice,
-      subtotalBruto,
-      precoVenda,
-      comissao: 0,
-      regraAplicada: 'Amostra Grátis: Valor registrado normalmente, sem comissão (R$ 0,00)',
-    };
-  }
-
-  // 5. Comissão para Consignado
-  if (tipoNorm === 'consignado') {
-    return {
-      precoUni: unitPrice,
-      subtotalBruto,
-      precoVenda,
-      comissao: 0,
-      regraAplicada: 'Consignado: Comissão fixada em R$ 0,00',
-    };
-  }
-
-  // 6. Comissão Padrão para Vendedores Externos (12% do subtotal bruto + Modificador integral)
+  // 4. Comissão Padrão para Vendedores Externos (12% do subtotal bruto + Modificador integral)
   const comissaoBase = subtotalBruto * 0.12;
   const comissaoFinal = comissaoBase + mod;
 

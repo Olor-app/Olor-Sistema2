@@ -168,7 +168,18 @@ export const VendasTable: React.FC<VendasTableProps> = ({
       grupo.itens.push(item);
     });
 
-    return Array.from(mapa.values());
+    const listaGrupos = Array.from(mapa.values());
+    listaGrupos.forEach((grupo) => {
+      const todosVenda = grupo.itens.every(it => (it.tipoSaida || '').trim().toLowerCase() === 'venda');
+      const temConsignado = grupo.itens.some(it => (it.tipoSaida || '').trim().toLowerCase() === 'consignado');
+      if (todosVenda) {
+        grupo.tipoSaida = 'Venda';
+      } else if (temConsignado) {
+        grupo.tipoSaida = 'Consignado';
+      }
+    });
+
+    return listaGrupos;
   }, [vendasFiltradas]);
 
   // Alternar expansão do Accordion
@@ -452,8 +463,11 @@ export const VendasTable: React.FC<VendasTableProps> = ({
     setPedidosExpandidos(prev => new Set(prev).add(pedido.idSaida));
     setEditandoIdSaida(pedido.idSaida);
 
-    // Clona os itens do pedido com cópia profunda para não alterar o estado original
-    const itensClonados: Venda[] = pedido.itens.map(item => ({ ...item }));
+    // Clona os itens do pedido preservando tipoSaida de cada item
+    const itensClonados: Venda[] = pedido.itens.map(item => ({
+      ...item,
+      tipoSaida: item.tipoSaida || pedido.tipoSaida
+    }));
 
     setFormEdicao({
       idSaida: pedido.idSaida,
@@ -489,17 +503,14 @@ export const VendasTable: React.FC<VendasTableProps> = ({
 
     const tabPreco = formAtualizado.tabelaPreco;
     const vendedor = formAtualizado.vendedor;
-    const tipoSaida = formAtualizado.tipoSaida;
-    const statusComissao = formAtualizado.statusComissao;
+    const isOlorLuz = (vendedor || '').trim().toLowerCase() === 'olor luz';
 
-    // Busca preço unitário se a embalagem ou tabela mudarem
+    // Determina o tipo de saída específico deste item
+    const itemTipo = itemAtual.tipoSaida || formAtualizado.tipoSaida || 'Venda';
+    const isVendaItem = (itemTipo || '').trim().toLowerCase() === 'venda';
+
     const emb = itemAtual.embalagem;
-    let precoUni = itemAtual.precoUni || 0;
-
-    if (campo === 'embalagem' || campo === 'tabelaPreco') {
-      precoUni = buscarPrecoUnitario(emb, tabPreco, dadosBrutos);
-    }
-    itemAtual.precoUni = precoUni;
+    const precoUniBuscado = buscarPrecoUnitario(emb, tabPreco, dadosBrutos);
 
     const quantidade = typeof itemAtual.quantidade === 'string'
       ? (parseFloat(itemAtual.quantidade) || 0)
@@ -508,43 +519,53 @@ export const VendasTable: React.FC<VendasTableProps> = ({
     const modStr = String(itemAtual.modificador ?? '').replace(',', '.');
     const modificador = parseFloat(modStr) || 0;
 
-    const tipoSaidaNorm = (tipoSaida || '').trim().toLowerCase();
-    const isOlorLuz = (vendedor || '').trim().toLowerCase() === 'olor luz';
-
+    let precoUni = 0;
     let precoVenda = 0;
     let comissao = 0;
 
-    if (tipoSaidaNorm === 'venda') {
-      precoVenda = (precoUni * quantidade) + modificador;
+    if (isVendaItem) {
+      precoUni = precoUniBuscado;
       const subtotalBruto = precoUni * quantidade;
-      comissao = isOlorLuz ? 0 : (subtotalBruto * 0.12) + modificador;
-    } else if (tipoSaidaNorm === 'consignado' || tipoSaidaNorm.includes('amostra')) {
-      precoVenda = (precoUni * quantidade) + modificador;
-      comissao = 0;
+      precoVenda = Math.max(0, subtotalBruto + modificador);
+      comissao = isOlorLuz ? 0 : Number(((subtotalBruto * 0.12) + modificador).toFixed(2));
     } else {
+      // Consignado, Amostra Grátis, Mostruário, Bonificação: valor financeiro zero
       precoUni = 0;
       precoVenda = 0;
       comissao = 0;
     }
 
-    if (isOlorLuz) {
-      comissao = 0;
-    }
-
+    itemAtual.tipoSaida = itemTipo;
     itemAtual.precoUni = precoUni;
     itemAtual.precoVenda = precoVenda;
     itemAtual.comissao = comissao;
     itemAtual.vendedor = vendedor;
-    itemAtual.tipoSaida = tipoSaida;
     itemAtual.tabelaPreco = tabPreco;
-    itemAtual.statusComissao = isOlorLuz ? '' : statusComissao;
+    itemAtual.statusComissao = isOlorLuz ? '' : formAtualizado.statusComissao;
     itemAtual.data = formAtualizado.data;
     itemAtual.clienteInfluenciador = formAtualizado.clienteInfluenciador;
     itemAtual.contato = formAtualizado.contato;
     itemAtual.obs = formAtualizado.obs;
 
     novosItens[indexItem] = itemAtual;
-    setFormEdicao({ ...formAtualizado, itens: novosItens });
+
+    // Regra: Se TODOS os itens do pedido se tornaram "Venda", a saída como um todo vira "Venda"
+    // Se ainda houver algum item "Consignado", permanece como "Consignado"
+    const todosItensVenda = novosItens.every(it => (it.tipoSaida || '').trim().toLowerCase() === 'venda');
+    const temItemConsignado = novosItens.some(it => (it.tipoSaida || '').trim().toLowerCase() === 'consignado');
+
+    let novoTipoHeader = formAtualizado.tipoSaida;
+    if (todosItensVenda) {
+      novoTipoHeader = 'Venda';
+    } else if (temItemConsignado) {
+      novoTipoHeader = 'Consignado';
+    }
+
+    setFormEdicao({
+      ...formAtualizado,
+      tipoSaida: novoTipoHeader,
+      itens: novosItens
+    });
   };
 
   // Recalcular todos os itens quando altera um campo do cabeçalho
@@ -552,15 +573,18 @@ export const VendasTable: React.FC<VendasTableProps> = ({
     if (!formEdicao) return;
 
     const headerAtualizado = { ...formEdicao, [campoHeader]: valorHeader };
-    
-    // Atualiza todos os itens de acordo com o novo cabeçalho
+    const novoTipoHeader = headerAtualizado.tipoSaida;
+
     const itensRecalculados = headerAtualizado.itens.map(item => {
       const tabPreco = headerAtualizado.tabelaPreco;
       const vendedor = headerAtualizado.vendedor;
-      const tipoSaida = headerAtualizado.tipoSaida;
-      const statusComissao = headerAtualizado.statusComissao;
+      const isOlorLuz = (vendedor || '').trim().toLowerCase() === 'olor luz';
 
-      const precoUni = buscarPrecoUnitario(item.embalagem, tabPreco, dadosBrutos);
+      // Se alterou o tipoSaida do cabeçalho, propaga para todos os itens
+      const itemTipo = campoHeader === 'tipoSaida' ? valorHeader : (item.tipoSaida || novoTipoHeader);
+      const isVendaItem = (itemTipo || '').trim().toLowerCase() === 'venda';
+
+      const precoUniBuscado = buscarPrecoUnitario(item.embalagem, tabPreco, dadosBrutos);
       const quantidade = typeof item.quantidade === 'string'
         ? (parseFloat(item.quantidade) || 0)
         : (Number(item.quantidade) || 0);
@@ -568,20 +592,17 @@ export const VendasTable: React.FC<VendasTableProps> = ({
       const modStr = String(item.modificador ?? '').replace(',', '.');
       const modificador = parseFloat(modStr) || 0;
 
-      const tipoSaidaNorm = (tipoSaida || '').trim().toLowerCase();
-      const isOlorLuz = (vendedor || '').trim().toLowerCase() === 'olor luz';
-
+      let precoUni = 0;
       let precoVenda = 0;
       let comissao = 0;
 
-      if (tipoSaidaNorm === 'venda') {
-        precoVenda = (precoUni * quantidade) + modificador;
+      if (isVendaItem) {
+        precoUni = precoUniBuscado;
         const subtotalBruto = precoUni * quantidade;
-        comissao = isOlorLuz ? 0 : (subtotalBruto * 0.12) + modificador;
-      } else if (tipoSaidaNorm === 'consignado' || tipoSaidaNorm.includes('amostra')) {
-        precoVenda = (precoUni * quantidade) + modificador;
-        comissao = 0;
+        precoVenda = Math.max(0, subtotalBruto + modificador);
+        comissao = isOlorLuz ? 0 : Number(((subtotalBruto * 0.12) + modificador).toFixed(2));
       } else {
+        precoUni = 0;
         precoVenda = 0;
         comissao = 0;
       }
@@ -590,9 +611,9 @@ export const VendasTable: React.FC<VendasTableProps> = ({
         ...item,
         data: headerAtualizado.data,
         vendedor: vendedor,
-        tipoSaida: tipoSaida,
+        tipoSaida: itemTipo,
         tabelaPreco: tabPreco,
-        statusComissao: isOlorLuz ? '' : statusComissao,
+        statusComissao: isOlorLuz ? '' : headerAtualizado.statusComissao,
         clienteInfluenciador: headerAtualizado.clienteInfluenciador,
         contato: headerAtualizado.contato,
         obs: headerAtualizado.obs,
@@ -612,23 +633,29 @@ export const VendasTable: React.FC<VendasTableProps> = ({
     if (!formEdicao) return;
     const prodPadrao = listas.produtos[0] || 'Essência Olor Luz';
     const embPadrao = listas.embalagens[0] || '10ml';
-    const precoUni = buscarPrecoUnitario(embPadrao, formEdicao.tabelaPreco, dadosBrutos);
+    const precoUniCalc = buscarPrecoUnitario(embPadrao, formEdicao.tabelaPreco, dadosBrutos);
+    const itemTipo = formEdicao.tipoSaida || 'Venda';
+    const isVenda = itemTipo.toLowerCase() === 'venda';
 
     const dataObj = new Date(formEdicao.data + 'T12:00:00');
+    const precoUni = isVenda ? precoUniCalc : 0;
+    const precoVenda = isVenda ? precoUniCalc : 0;
+    const comissao = (isVenda && formEdicao.vendedor.toLowerCase() !== 'olor luz') ? Number((precoUniCalc * 0.12).toFixed(2)) : 0;
+
     const novoItem: Venda = {
       id: `VEN-${dataObj.getFullYear()}${("0" + (dataObj.getMonth() + 1)).slice(-2)}${("0" + dataObj.getDate()).slice(-2)}-${Math.floor(1000 + Math.random() * 9000)}`,
       data: formEdicao.data,
       idSaida: formEdicao.idSaida,
       vendedor: formEdicao.vendedor,
       tabelaPreco: formEdicao.tabelaPreco,
-      tipoSaida: formEdicao.tipoSaida,
+      tipoSaida: itemTipo,
       produto: prodPadrao,
       embalagem: embPadrao,
       quantidade: 1,
       modificador: 0,
       precoUni: precoUni,
-      precoVenda: precoUni,
-      comissao: (formEdicao.tipoSaida.toLowerCase() === 'venda' && formEdicao.vendedor.toLowerCase() !== 'olor luz') ? precoUni * 0.12 : 0,
+      precoVenda: precoVenda,
+      comissao: comissao,
       statusComissao: formEdicao.statusComissao,
       dia: dataObj.getDate(),
       mes: dataObj.getMonth() + 1,
@@ -1334,18 +1361,19 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                     </button>
                                   </div>
 
-                                  <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950">
-                                    <table className="w-full text-left text-xs">
+                                  <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 shadow-inner max-w-full">
+                                    <table className="w-full min-w-[980px] text-left text-xs border-collapse">
                                       <thead className="bg-slate-900 text-slate-400 font-mono text-[11px] uppercase border-b border-slate-800">
                                         <tr>
-                                          <th className="px-3 py-2">Produto</th>
-                                          <th className="px-3 py-2">Embalagem</th>
-                                          <th className="px-3 py-2 text-right w-20">Qtd</th>
-                                          <th className="px-3 py-2 text-right">Preço Uni</th>
-                                          <th className="px-3 py-2 text-right w-28">Modificador (R$)</th>
-                                          <th className="px-3 py-2 text-right text-amber-300">Preço Venda</th>
-                                          <th className="px-3 py-2 text-right text-emerald-400">R$ Comissão</th>
-                                          <th className="px-3 py-2 text-center w-12">Remover</th>
+                                          <th className="px-3.5 py-2.5 min-w-[200px] w-56">Produto</th>
+                                          <th className="px-3.5 py-2.5 min-w-[150px] w-40">Embalagem</th>
+                                          <th className="px-3.5 py-2.5 text-right w-20 min-w-[70px]">Qtd</th>
+                                          <th className="px-3.5 py-2.5 text-center min-w-[240px]">Tipo / Ação</th>
+                                          <th className="px-3.5 py-2.5 text-right min-w-[100px]">Preço Uni</th>
+                                          <th className="px-3.5 py-2.5 text-right min-w-[120px]">Modificador (R$)</th>
+                                          <th className="px-3.5 py-2.5 text-right text-amber-300 min-w-[110px]">Preço Venda</th>
+                                          <th className="px-3.5 py-2.5 text-right text-emerald-400 min-w-[110px]">R$ Comissão</th>
+                                          <th className="px-3.5 py-2.5 text-center min-w-[60px] w-14">Remover</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-800/60 font-sans">
@@ -1353,11 +1381,11 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                           <tr key={item.id || idx} className="hover:bg-slate-900/50">
                                             
                                             {/* Select Produto */}
-                                            <td className="px-3 py-2">
+                                            <td className="px-3 py-2 min-w-[200px]">
                                               <select
                                                 value={item.produto}
                                                 onChange={(e) => recalculareAtualizarItemForm(idx, 'produto', e.target.value)}
-                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-medium focus:outline-none focus:border-amber-400"
                                               >
                                                 {listas.produtos.map(p => (
                                                   <option key={p} value={p}>{p}</option>
@@ -1366,11 +1394,11 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                             </td>
 
                                             {/* Select Embalagem */}
-                                            <td className="px-3 py-2">
+                                            <td className="px-3 py-2 min-w-[150px]">
                                               <select
                                                 value={item.embalagem}
                                                 onChange={(e) => recalculareAtualizarItemForm(idx, 'embalagem', e.target.value)}
-                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-medium focus:outline-none focus:border-amber-400"
                                               >
                                                 {listas.embalagens.map(emb => (
                                                   <option key={emb} value={emb}>{emb}</option>
@@ -1379,7 +1407,7 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                             </td>
 
                                             {/* Input Quantidade */}
-                                            <td className="px-3 py-2 text-right">
+                                            <td className="px-3 py-2 text-right min-w-[70px]">
                                               <input
                                                 type="text"
                                                 inputMode="numeric"
@@ -1395,13 +1423,46 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                               />
                                             </td>
 
+                                            {/* Tipo do Item / Converter em Venda */}
+                                            <td className="px-3 py-2 text-center min-w-[240px]">
+                                              <div className="flex items-center justify-center gap-1.5">
+                                                <select
+                                                  value={item.tipoSaida || formEdicao.tipoSaida}
+                                                  onChange={(e) => recalculareAtualizarItemForm(idx, 'tipoSaida', e.target.value)}
+                                                  className={`bg-slate-900 border rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none ${
+                                                    (item.tipoSaida || '').toLowerCase() === 'venda'
+                                                      ? 'border-emerald-500/50 text-emerald-300'
+                                                      : 'border-purple-500/50 text-purple-300'
+                                                  }`}
+                                                >
+                                                  <option value="Consignado">Consignado</option>
+                                                  <option value="Venda">Venda</option>
+                                                  <option value="Amostra Grátis">Amostra Grátis</option>
+                                                  <option value="Mostruário">Mostruário</option>
+                                                  <option value="Bonificação">Bonificação</option>
+                                                </select>
+
+                                                {(item.tipoSaida || '').toLowerCase() !== 'venda' && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => recalculareAtualizarItemForm(idx, 'tipoSaida', 'Venda')}
+                                                    className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg text-[11px] font-bold shadow transition-colors flex items-center gap-1 shrink-0"
+                                                    title="Tornar este item uma Venda com faturamento"
+                                                  >
+                                                    <ShoppingBag className="w-3.5 h-3.5 text-slate-950" />
+                                                    <span className="whitespace-nowrap">Tornar Venda</span>
+                                                  </button>
+                                                )}
+                                              </div>
+                                            </td>
+
                                             {/* Preço Unitário Calculado */}
-                                            <td className="px-3 py-2 text-right font-mono text-slate-300">
+                                            <td className="px-3 py-2 text-right font-mono text-slate-300 min-w-[100px] whitespace-nowrap">
                                               {formatarMoeda(item.precoUni)}
                                             </td>
 
                                             {/* Input Modificador (Desconto/Adicional Total) */}
-                                            <td className="px-3 py-2 text-right">
+                                            <td className="px-3 py-2 text-right min-w-[120px]">
                                               <input
                                                 type="text"
                                                 inputMode="decimal"
@@ -1418,22 +1479,22 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                             </td>
 
                                             {/* Preço Venda Calculado */}
-                                            <td className="px-3 py-2 text-right font-mono font-bold text-amber-300">
+                                            <td className="px-3 py-2 text-right font-mono font-bold text-amber-300 min-w-[110px] whitespace-nowrap">
                                               {formatarMoeda(item.precoVenda)}
                                             </td>
 
                                             {/* Comissão Calculada */}
-                                            <td className="px-3 py-2 text-right font-mono font-bold text-emerald-400">
+                                            <td className="px-3 py-2 text-right font-mono font-bold text-emerald-400 min-w-[110px] whitespace-nowrap">
                                               {formatarMoeda(item.comissao)}
                                             </td>
 
                                             {/* Botão Remover Item */}
-                                            <td className="px-3 py-2 text-center">
+                                            <td className="px-3 py-2 text-center min-w-[60px]">
                                               <button
                                                 type="button"
                                                 onClick={() => handleRemoverItemForm(idx)}
                                                 disabled={formEdicao.itens.length <= 1}
-                                                className="p-1 bg-slate-900 hover:bg-rose-500/20 text-rose-400 rounded transition-colors disabled:opacity-30"
+                                                className="p-1.5 bg-slate-900 hover:bg-rose-500/20 text-rose-400 rounded transition-colors disabled:opacity-30"
                                                 title="Remover este item do pedido"
                                               >
                                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1471,6 +1532,7 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                       <tr>
                                         <th className="px-3.5 py-2.5">Produto</th>
                                         <th className="px-3.5 py-2.5">Embalagem</th>
+                                        <th className="px-3.5 py-2.5 text-center">Tipo</th>
                                         <th className="px-3.5 py-2.5 text-right">Qtd</th>
                                         <th className="px-3.5 py-2.5 text-right">Preço Uni</th>
                                         <th className="px-3.5 py-2.5 text-right">Modificador</th>
@@ -1483,6 +1545,15 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                         <tr key={item.id || idx} className="hover:bg-slate-900/50">
                                           <td className="px-3.5 py-2.5 font-semibold text-slate-100">{item.produto}</td>
                                           <td className="px-3.5 py-2.5 text-slate-300">{item.embalagem}</td>
+                                          <td className="px-3.5 py-2.5 text-center">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                              (item.tipoSaida || pedido.tipoSaida || '').toLowerCase() === 'venda'
+                                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                                : 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                                            }`}>
+                                              {item.tipoSaida || pedido.tipoSaida}
+                                            </span>
+                                          </td>
                                           <td className="px-3.5 py-2.5 text-right font-mono font-bold text-slate-100">{item.quantidade}</td>
                                           <td className="px-3.5 py-2.5 text-right font-mono text-slate-300">{formatarMoeda(item.precoUni)}</td>
                                           <td className={`px-3.5 py-2.5 text-right font-mono ${
