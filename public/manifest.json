@@ -1,0 +1,23 @@
+{
+  "short_name": "OLOR LUZ",
+  "name": "SIG Olor Luz - ERP & Gestão de Vendas",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/zVS8RLjX/Logo-Olor-Luz-PNG-Oficial.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://i.ibb.co/zVS8RLjX/Logo-Olor-Luz-PNG-Oficial.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait"
+}
