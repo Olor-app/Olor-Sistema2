@@ -8,6 +8,7 @@ import { VendasTable } from './components/VendasTable';
 import { PriceMatrix } from './components/PriceMatrix';
 import { ListasManagement } from './components/ListasManagement';
 import { UserManagement } from './components/UserManagement';
+import { ComissoesView } from './components/ComissoesView';
 import { LoginScreen } from './components/LoginScreen';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -135,6 +136,7 @@ export default function App() {
               <h1 className="font-cinzel text-base sm:text-xl lg:text-2xl font-bold text-amber-200 tracking-wider text-center sm:text-left">
                 {activeTab === 'dashboard' && 'Dashboard de Vendas'}
                 {activeTab === 'historico' && 'Histórico de Saídas (BD_Vendas)'}
+                {activeTab === 'comissoes' && 'Relatórios e Extratos de Comissões'}
                 {activeTab === 'nova-venda' && 'Lançamento de Nova Saída / Pedido'}
                 {activeTab === 'tabela-precos' && 'Matriz de Produtos & Preços'}
                 {activeTab === 'listas' && 'Gestão de Listas do Sistema'}
@@ -190,6 +192,19 @@ export default function App() {
                 listas={listas}
                 dadosBrutos={dadosBrutos}
                 currentUser={currentUser}
+              />
+            </section>
+          )}
+
+          {/* 3. COMISSÕES */}
+          {activeTab === 'comissoes' && (
+            <section className="space-y-6">
+              <ComissoesView
+                vendas={vendas}
+                listas={listas}
+                currentUser={currentUser}
+                onRefresh={carregarDados}
+                loading={loading}
               />
             </section>
           )}

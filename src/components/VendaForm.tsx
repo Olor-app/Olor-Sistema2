@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ListasSelects, Venda, TipoSaida, StatusComissao } from '../types';
 import { calcularValoresVenda, formatarMoeda } from '../utils/calculations';
 import { buscarPrecoUnitario, salvarLoteVendas } from '../services/api';
@@ -75,6 +75,19 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
   const opcoesStatusComissao = (listas.statusComissao && listas.statusComissao.length > 0)
     ? Array.from(new Set(['Pago', 'Não Pago', ...listas.statusComissao]))
     : ['Pago', 'Não Pago'];
+
+  // Listas ordenadas alfabeticamente para os selects
+  const produtosOrdenados = useMemo(() => {
+    return [...(listas.produtos || [])].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true })
+    );
+  }, [listas.produtos]);
+
+  const embalagensOrdenadas = useMemo(() => {
+    return [...(listas.embalagens || [])].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true })
+    );
+  }, [listas.embalagens]);
 
   // Função auxiliar para criar uma nova linha de produto totalmente limpa/vazia
   const criarLinhaProdutoVazia = (): ItemLinha => ({
@@ -563,7 +576,7 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400 font-medium"
                       >
                         <option value="">Selecione o Produto...</option>
-                        {listas.produtos.map((p) => (
+                        {produtosOrdenados.map((p) => (
                           <option key={p} value={p}>{p}</option>
                         ))}
                       </select>
@@ -579,7 +592,7 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
                       >
                         <option value="">Selecione a Embalagem...</option>
-                        {listas.embalagens.map((emb) => (
+                        {embalagensOrdenadas.map((emb) => (
                           <option key={emb} value={emb}>{emb}</option>
                         ))}
                       </select>

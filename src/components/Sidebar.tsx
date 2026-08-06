@@ -23,7 +23,7 @@ import {
   ListChecks
 } from 'lucide-react';
 
-export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'tabela-precos' | 'listas' | 'gestao-usuarios';
+export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'comissoes' | 'tabela-precos' | 'listas' | 'gestao-usuarios';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -72,6 +72,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'BD_Vendas',
       description: isMaster ? 'Histórico Geral de Saídas' : 'Minhas Vendas Lançadas',
       icon: Table,
+      allowedRoles: ['Master', 'Vendedor']
+    },
+    {
+      id: 'comissoes' as TabType,
+      label: 'Comissões',
+      description: 'Relatórios & Extratos de Comissões',
+      icon: DollarSign,
+      badge: 'Extrato',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
       allowedRoles: ['Master', 'Vendedor']
     },
     {

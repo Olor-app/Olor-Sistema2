@@ -3,7 +3,8 @@ import { ListasSelects } from '../types';
 import { 
   CURRENT_MATRIZ_PRECOS, 
   salvarMatrizPrecosApi, 
-  DEFAULT_MATRIZ_PRECOS 
+  DEFAULT_MATRIZ_PRECOS,
+  sortAlphabetically 
 } from '../services/api';
 import { formatarMoeda } from '../utils/calculations';
 import { 
@@ -52,9 +53,11 @@ export const PriceMatrix: React.FC<PriceMatrixProps> = ({ listas, onRefresh }) =
 
   // Inicializa dados com base nas listas do props ou no cache CURRENT_MATRIZ_PRECOS
   useEffect(() => {
-    const embList = (listas.embalagens && listas.embalagens.length > 0)
+    const rawEmbList = (listas.embalagens && listas.embalagens.length > 0)
       ? listas.embalagens
       : Object.keys(CURRENT_MATRIZ_PRECOS);
+
+    const embList = sortAlphabetically(rawEmbList);
 
     setEmbalagens(embList);
 
@@ -122,7 +125,7 @@ export const PriceMatrix: React.FC<PriceMatrixProps> = ({ listas, onRefresh }) =
       return;
     }
 
-    const novasEmbalagens = [...embalagens, nomeLimpo];
+    const novasEmbalagens = sortAlphabetically([...embalagens, nomeLimpo]);
     const novaMatriz = {
       ...matrizPrecos,
       [nomeLimpo]: { ...novosPrecos }

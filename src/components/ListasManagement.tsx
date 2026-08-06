@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ListasSelects } from '../types';
-import { salvarListasCustomizadasApi, DEFAULT_LISTAS, CURRENT_LISTAS } from '../services/api';
+import { salvarListasCustomizadasApi, DEFAULT_LISTAS, CURRENT_LISTAS, sortAlphabetically } from '../services/api';
 import { 
   Users, 
   Package, 
@@ -51,7 +51,7 @@ export const ListasManagement: React.FC<ListasManagementProps> = ({ listas, onRe
   // Inicializa listas
   useEffect(() => {
     setVendedores(listas.vendedores || CURRENT_LISTAS.vendedores || DEFAULT_LISTAS.vendedores);
-    setProdutos(listas.produtos || CURRENT_LISTAS.produtos || DEFAULT_LISTAS.produtos);
+    setProdutos(sortAlphabetically(listas.produtos || CURRENT_LISTAS.produtos || DEFAULT_LISTAS.produtos));
     setTiposSaida(listas.tiposSaida || CURRENT_LISTAS.tiposSaida || DEFAULT_LISTAS.tiposSaida);
   }, [listas]);
 
@@ -64,7 +64,7 @@ export const ListasManagement: React.FC<ListasManagementProps> = ({ listas, onRe
 
   const setListaAtiva = (novaLista: string[]) => {
     if (activeSubTab === 'vendedores') setVendedores(novaLista);
-    else if (activeSubTab === 'produtos') setProdutos(novaLista);
+    else if (activeSubTab === 'produtos') setProdutos(sortAlphabetically(novaLista));
     else setTiposSaida(novaLista);
   };
 

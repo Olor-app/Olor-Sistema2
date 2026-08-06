@@ -22,28 +22,34 @@ import {
 
 const STORAGE_KEY_CURRENT_USER = 'olor_luz_current_user';
 
+export function sortAlphabetically(arr: string[]): string[] {
+  return [...(arr || [])].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true })
+  );
+}
+
 // --- LISTAS AUXILIARES EXATAS DO SIG OLOR LUZ ---
 export const DEFAULT_LISTAS: ListasSelects = {
   vendedores: [
     'Rosa', 'Cleide', 'Kely', 'Sônia', 'Olor Luz', 'Andreia', 
     'Vivi', 'Tânia Raquel', 'Kathleen', 'Tiktok', 'Jessica Caetano', 'Jean', 'Gabi'
   ],
-  produtos: [
+  produtos: sortAlphabetically([
     'AURORA DE VANILLA', 'BAMBOO', 'BRISA CELESTIAL', 'CAPIM LIMÃO', 
     'ENCANTO DO OCEANO', 'FLOR DE CEREJEIRA', 'JARDIM DE ESTRELAS', 'JASMIM', 
     'LAVANDA', 'RESPLENDOR DOS SONHOS', 'Caixa Kit (15ml) Premium', 
     'MAGIA NATALINA', 'CHA BRANCO', 'PAPELARIA', 'BLACKOUT', 
     'CLEAN FULL PET SPRAY', 'CLEAN FULL PET', 'DIFUSOR ELETRICO', 
     'DIFUSOR ELETRICO + ESSENCIA', 'FLOR DE CACAU', 'CHOCOLATE MENTOLADO'
-  ],
-  embalagens: [
+  ]),
+  embalagens: sortAlphabetically([
     '120ML', '130ML', '1L', '(Pet)1L Sabão', '20ML', 'Essencia 20ml', 
     '(Pet) 500ml Spray', 'Caixa Kit (15ml) Premium', 'Caixa Kit 20 ml', 
     'Difusor', 'Difusor Eletrico', 'Difusor Eletrico Branco + Essencia', 
     'Difusor Eletrico Preto + Essencia', 'REFIL 250ML', 'REFIL 250ML Difusor', 
     'Sacola Olor luz', 'Sabonete Vidro 250ml', 'Sabonete 500ml', 
     'Água de Lençóis 500 ml', 'Caixa Kit (Sabonete + Difusor varetas)'
-  ],
+  ]),
   tabelasPreco: ['Site', 'Tiktok', 'Venda Direta', 'Consignado', 'Preço Logista'],
   tiposSaida: ['Venda', 'Consignado', 'Bonificação', 'Mostruário', 'Amostra Grátis'],
   statusComissao: ['Pago', 'Não Pago', 'Pendente', 'Cancelado']
@@ -348,7 +354,7 @@ export async function fetchListasEVendas(): Promise<{
           CURRENT_MATRIZ_PRECOS = data.matriz;
         }
         if (Array.isArray(data.embalagens) && data.embalagens.length > 0) {
-          CURRENT_LISTAS.embalagens = data.embalagens;
+          CURRENT_LISTAS.embalagens = sortAlphabetically(data.embalagens);
         }
       }
 
@@ -361,13 +367,13 @@ export async function fetchListasEVendas(): Promise<{
           CURRENT_LISTAS.vendedores = data.vendedores;
         }
         if (Array.isArray(data.produtos) && data.produtos.length > 0) {
-          CURRENT_LISTAS.produtos = data.produtos;
+          CURRENT_LISTAS.produtos = sortAlphabetically(data.produtos);
         }
         if (Array.isArray(data.tiposSaida) && data.tiposSaida.length > 0) {
           CURRENT_LISTAS.tiposSaida = data.tiposSaida;
         }
         if (Array.isArray(data.embalagens) && data.embalagens.length > 0) {
-          CURRENT_LISTAS.embalagens = data.embalagens;
+          CURRENT_LISTAS.embalagens = sortAlphabetically(data.embalagens);
         }
       }
     } catch (configErr) {
@@ -452,13 +458,13 @@ export async function salvarMatrizPrecosApi(
 ): Promise<{ success: boolean; message: string }> {
   // Atualiza cache em memória local instantaneamente
   CURRENT_MATRIZ_PRECOS = JSON.parse(JSON.stringify(novaMatriz));
-  CURRENT_LISTAS.embalagens = [...novasEmbalagens];
+  CURRENT_LISTAS.embalagens = sortAlphabetically(novasEmbalagens);
 
   try {
     const configDocRef = doc(db, 'config', 'matrizPrecos');
     await setDoc(configDocRef, {
       matriz: novaMatriz,
-      embalagens: novasEmbalagens,
+      embalagens: CURRENT_LISTAS.embalagens,
       updatedAt: new Date().toISOString()
     });
 
@@ -480,9 +486,9 @@ export async function salvarListasCustomizadasApi(
   novasListas: Partial<ListasSelects>
 ): Promise<{ success: boolean; message: string }> {
   if (novasListas.vendedores) CURRENT_LISTAS.vendedores = [...novasListas.vendedores];
-  if (novasListas.produtos) CURRENT_LISTAS.produtos = [...novasListas.produtos];
+  if (novasListas.produtos) CURRENT_LISTAS.produtos = sortAlphabetically(novasListas.produtos);
   if (novasListas.tiposSaida) CURRENT_LISTAS.tiposSaida = [...novasListas.tiposSaida];
-  if (novasListas.embalagens) CURRENT_LISTAS.embalagens = [...novasListas.embalagens];
+  if (novasListas.embalagens) CURRENT_LISTAS.embalagens = sortAlphabetically(novasListas.embalagens);
 
   try {
     const listasDocRef = doc(db, 'config', 'listasCustomizadas');
@@ -715,6 +721,51 @@ export async function excluirPedidoApi(idSaida: string): Promise<{ success: bool
     return {
       success: true,
       message: 'Pedido removido localmente com sucesso.'
+    };
+  }
+}
+
+// --- ATUALIZAR STATUS DE COMISSÃO EM LOTE OU INDIVIDUAL ---
+export async function atualizarStatusComissaoVendaApi(
+  idsVendasOuSaidas: string[],
+  novoStatus: string
+): Promise<{ success: boolean; message: string }> {
+  // 1. Atualiza cache local
+  const vendasAtuais = getLocalVendas();
+  const vendasAtualizadas = vendasAtuais.map(v => {
+    if (idsVendasOuSaidas.includes(v.id) || idsVendasOuSaidas.includes(v.idSaida)) {
+      return { ...v, statusComissao: novoStatus };
+    }
+    return v;
+  });
+  saveLocalVendas(vendasAtualizadas);
+
+  try {
+    // 2. Atualiza no Firestore
+    const vendasCol = collection(db, 'vendas');
+    const querySnap = await getDocs(vendasCol);
+    const updatePromises: Promise<void>[] = [];
+
+    querySnap.docs.forEach(docSnap => {
+      const data = docSnap.data();
+      if (idsVendasOuSaidas.includes(docSnap.id) || idsVendasOuSaidas.includes(data.idSaida)) {
+        updatePromises.push(updateDoc(doc(db, 'vendas', docSnap.id), {
+          statusComissao: novoStatus,
+          updatedAt: new Date().toISOString()
+        }));
+      }
+    });
+
+    await Promise.all(updatePromises);
+    return {
+      success: true,
+      message: `Status de comissão atualizado para "${novoStatus}" com sucesso!`
+    };
+  } catch (err: any) {
+    console.error('Erro ao atualizar status de comissão no Firestore:', err);
+    return {
+      success: true,
+      message: `Status atualizado localmente para "${novoStatus}".`
     };
   }
 }

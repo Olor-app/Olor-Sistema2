@@ -99,6 +99,19 @@ export const VendasTable: React.FC<VendasTableProps> = ({
     setTimeout(() => setToast(null), 4000);
   };
 
+  // Listas ordenadas alfabeticamente para os selects
+  const produtosOrdenados = useMemo(() => {
+    return [...(listas?.produtos || [])].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true })
+    );
+  }, [listas?.produtos]);
+
+  const embalagensOrdenadas = useMemo(() => {
+    return [...(listas?.embalagens || [])].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true })
+    );
+  }, [listas?.embalagens]);
+
   // Listas únicas para os selects dos filtros
   const vendedoresUnicos = Array.from(new Set(vendas.map(v => v.vendedor).filter(Boolean))).sort();
   const tiposSaidaUnicos = Array.from(new Set(vendas.map(v => v.tipoSaida).filter(Boolean))).sort();
@@ -1710,7 +1723,7 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                                 onChange={(e) => recalculareAtualizarItemForm(idx, 'produto', e.target.value)}
                                                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-medium focus:outline-none focus:border-amber-400"
                                               >
-                                                {listas.produtos.map(p => (
+                                                {produtosOrdenados.map(p => (
                                                   <option key={p} value={p}>{p}</option>
                                                 ))}
                                               </select>
@@ -1723,7 +1736,7 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                                 onChange={(e) => recalculareAtualizarItemForm(idx, 'embalagem', e.target.value)}
                                                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-medium focus:outline-none focus:border-amber-400"
                                               >
-                                                {listas.embalagens.map(emb => (
+                                                {embalagensOrdenadas.map(emb => (
                                                   <option key={emb} value={emb}>{emb}</option>
                                                 ))}
                                               </select>
