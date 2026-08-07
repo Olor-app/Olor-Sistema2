@@ -192,6 +192,29 @@ export const VendasTable: React.FC<VendasTableProps> = ({
       }
     });
 
+    // Ordenar da data mais recente para a menos recente (decrescente)
+    const parseTimestamp = (d?: string) => {
+      if (!d) return 0;
+      if (/^\d{4}-\d{2}-\d{2}/.test(d)) {
+        return new Date(d.substring(0, 10) + 'T00:00:00').getTime();
+      }
+      if (/^\d{2}\/\d{2}\/\d{4}/.test(d)) {
+        const [dia, mes, ano] = d.split('/');
+        return new Date(`${ano}-${mes}-${dia}T00:00:00`).getTime();
+      }
+      const t = new Date(d).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+
+    listaGrupos.sort((a, b) => {
+      const timeA = parseTimestamp(a.data);
+      const timeB = parseTimestamp(b.data);
+      if (timeB !== timeA) {
+        return timeB - timeA;
+      }
+      return (b.idSaida || '').localeCompare(a.idSaida || '', undefined, { numeric: true });
+    });
+
     return listaGrupos;
   }, [vendasFiltradas]);
 
