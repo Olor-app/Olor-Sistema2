@@ -99,12 +99,20 @@ export const VendasTable: React.FC<VendasTableProps> = ({
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Listas ordenadas alfabeticamente para os selects
+  // Listas ordenadas alfabeticamente para os selects (apenas produtos com status Ativo)
   const produtosOrdenados = useMemo(() => {
-    return [...(listas?.produtos || [])].sort((a, b) =>
+    let prods: string[] = [];
+    if (Array.isArray(listas?.produtosDetalhes) && listas.produtosDetalhes.length > 0) {
+      prods = listas.produtosDetalhes
+        .filter(p => p.status === 'Ativo')
+        .map(p => p.nome);
+    } else if (Array.isArray(listas?.produtos)) {
+      prods = listas.produtos.map(p => typeof p === 'string' ? p : (p as any).nome || '');
+    }
+    return Array.from(new Set(prods.filter(Boolean))).sort((a, b) =>
       a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true })
     );
-  }, [listas?.produtos]);
+  }, [listas?.produtos, listas?.produtosDetalhes]);
 
   const embalagensOrdenadas = useMemo(() => {
     return [...(listas?.embalagens || [])].sort((a, b) =>
@@ -1640,7 +1648,7 @@ export const VendasTable: React.FC<VendasTableProps> = ({
                                                 onChange={(e) => recalculareAtualizarItemForm(idx, 'produto', e.target.value)}
                                                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-medium focus:outline-none focus:border-amber-400"
                                               >
-                                                {listas.produtos.map(p => (
+                                                {produtosOrdenados.map(p => (
                                                   <option key={p} value={p}>{p}</option>
                                                 ))}
                                               </select>

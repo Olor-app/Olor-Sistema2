@@ -76,12 +76,20 @@ export const VendaForm: React.FC<VendaFormProps> = ({ listas, dadosBrutos, onVen
     ? Array.from(new Set(['Pago', 'Não Pago', ...listas.statusComissao]))
     : ['Pago', 'Não Pago'];
 
-  // Listas ordenadas alfabeticamente para os selects
+  // Listas ordenadas alfabeticamente para os selects (apenas produtos com status Ativo)
   const produtosOrdenados = useMemo(() => {
-    return [...(listas.produtos || [])].sort((a, b) =>
+    let prods: string[] = [];
+    if (Array.isArray(listas.produtosDetalhes) && listas.produtosDetalhes.length > 0) {
+      prods = listas.produtosDetalhes
+        .filter(p => p.status === 'Ativo')
+        .map(p => p.nome);
+    } else if (Array.isArray(listas.produtos)) {
+      prods = listas.produtos.map(p => typeof p === 'string' ? p : (p as any).nome || '');
+    }
+    return Array.from(new Set(prods.filter(Boolean))).sort((a, b) =>
       a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true })
     );
-  }, [listas.produtos]);
+  }, [listas.produtos, listas.produtosDetalhes]);
 
   const embalagensOrdenadas = useMemo(() => {
     return [...(listas.embalagens || [])].sort((a, b) =>

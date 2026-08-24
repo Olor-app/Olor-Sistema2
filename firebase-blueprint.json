@@ -38,6 +38,23 @@
         "contato": { "type": "string" }
       },
       "required": ["data", "vendedor", "produto", "embalagem", "quantidade"]
+    },
+    "Formula": {
+      "title": "Formula",
+      "description": "Fórmula química/aromática de produto com insumos, quantidades, metodologias e custos para P&D e Engenharia",
+      "type": "object",
+      "properties": {
+        "produto": { "type": "string", "description": "Nome do produto ou fragrância" },
+        "status": { "type": "string", "enum": ["Ativo", "Inativo", "Teste"], "description": "Status do produto na formulação" },
+        "isCriacaoLivre": { "type": "boolean", "description": "Se a fórmula foi criada em modo laboratório livre" },
+        "rendimento": { "type": "number", "description": "Rendimento do lote de teste ou padrão" },
+        "unidadeRendimento": { "type": "string", "enum": ["L", "ml", "Kg", "g"], "description": "Unidade de rendimento do lote" },
+        "custoTotal": { "type": "number", "description": "Custo total dos insumos do lote" },
+        "custoUnitarioLitro": { "type": "number", "description": "Custo unitário normalizado por litro (R$/L)" },
+        "insumos": { "type": "array", "description": "Lista dinâmica de insumos e matérias-primas da receita" },
+        "obs": { "type": "string", "description": "Observações gerais da fórmula" }
+      },
+      "required": ["produto", "status", "insumos"]
     }
   },
   "firestore": {
@@ -48,6 +65,10 @@
     "/vendas/{vendaId}": {
       "schema": "Venda",
       "description": "Coleção de pedidos e vendas da Olor Luz"
+    },
+    "/formulas/{formulaId}": {
+      "schema": "Formula",
+      "description": "Coleção de fórmulas de produtos e fragrâncias da Olor Luz"
     }
   }
 }

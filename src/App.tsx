@@ -9,6 +9,7 @@ import { PriceMatrix } from './components/PriceMatrix';
 import { ListasManagement } from './components/ListasManagement';
 import { UserManagement } from './components/UserManagement';
 import { ComissoesView } from './components/ComissoesView';
+import { FormulasView } from './components/FormulasView';
 import { LoginScreen } from './components/LoginScreen';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -83,7 +84,7 @@ export default function App() {
   // Bloqueio RBAC para vendedores tentando acessar rotas administrativas
   useEffect(() => {
     if (currentUser && currentUser.tipo === 'Vendedor') {
-      if (['nova-venda', 'tabela-precos', 'listas', 'gestao-usuarios'].includes(activeTab)) {
+      if (['nova-venda', 'tabela-precos', 'formulas', 'listas', 'gestao-usuarios'].includes(activeTab)) {
         setActiveTab('dashboard');
       }
     }
@@ -139,6 +140,7 @@ export default function App() {
                 {activeTab === 'comissoes' && 'Relatórios e Extratos de Comissões'}
                 {activeTab === 'nova-venda' && 'Lançamento de Nova Saída / Pedido'}
                 {activeTab === 'tabela-precos' && 'Matriz de Produtos & Preços'}
+                {activeTab === 'formulas' && 'Engenharia de Produtos & Fórmulas (P&D)'}
                 {activeTab === 'listas' && 'Gestão de Listas do Sistema'}
                 {activeTab === 'gestao-usuarios' && 'Gestão de Usuários & Acessos (RBAC)'}
               </h1>
@@ -231,7 +233,18 @@ export default function App() {
             </section>
           )}
 
-          {/* 5. GESTÃO DE LISTAS DO SISTEMA (Apenas Master) */}
+          {/* 5. ENGENHARIA DE PRODUTOS & FÓRMULAS P&D (Apenas Master) */}
+          {activeTab === 'formulas' && currentUser.tipo === 'Master' && (
+            <section className="space-y-6">
+              <FormulasView
+                listas={listas}
+                onRefreshListas={carregarDados}
+                currentUser={currentUser}
+              />
+            </section>
+          )}
+
+          {/* 6. GESTÃO DE LISTAS DO SISTEMA (Apenas Master) */}
           {activeTab === 'listas' && currentUser.tipo === 'Master' && (
             <section className="space-y-6">
               <ListasManagement

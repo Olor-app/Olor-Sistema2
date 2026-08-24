@@ -1,4 +1,5 @@
-import { ApiResponse, ListasSelects, User, Venda, TipoSaida } from '../types';
+import { ApiResponse, ListasSelects, User, Venda, TipoSaida, MateriaPrima, ProdutoItem, ProdutoStatus, Formula, InsumoFormula } from '../types';
+import { normalizarFormulaCompleta } from '../utils/formulaCalculations';
 import { auth, db } from '../lib/firebase';
 import { 
   signInWithEmailAndPassword, 
@@ -28,20 +29,117 @@ export function sortAlphabetically(arr: string[]): string[] {
   );
 }
 
+// --- LISTA DE MATÉRIAS-PRIMAS PADRÃO DO SIG OLOR LUZ ---
+export const DEFAULT_MATERIAS_PRIMAS: MateriaPrima[] = [
+  { nome: 'Ácido Cítrico', precoUni: 17.00, uni: 'L' },
+  { nome: 'ácido fosforico', precoUni: 9.00, uni: 'L' },
+  { nome: 'Acticide BR 7530', precoUni: 14.15, uni: 'L' },
+  { nome: 'Água', precoUni: 0.02, uni: 'L' },
+  { nome: 'Álcool Cereais', precoUni: 16.00, uni: 'L' },
+  { nome: 'Álcool Etílico', precoUni: 6.00, uni: 'L' },
+  { nome: 'Álcool Isopropilico', precoUni: 16.00, uni: 'L' },
+  { nome: 'Alecrim', precoUni: 150.00, uni: 'L' },
+  { nome: 'Amida 90', precoUni: 30.00, uni: 'L' },
+  { nome: 'Angel', precoUni: 190.00, uni: 'L' },
+  { nome: 'Aurora de Vanilla', precoUni: 0, uni: 'L' },
+  { nome: 'Aurora de Vanilla (Base)', precoUni: 0, uni: 'L' },
+  { nome: 'Bamboo Dreams essencial', precoUni: 95.00, uni: 'L' },
+  { nome: 'Base Kayak', precoUni: 200.00, uni: 'L' },
+  { nome: 'Base Perolizante', precoUni: 32.00, uni: 'L' },
+  { nome: 'Base Sabonete Liquido', precoUni: 0, uni: 'L' },
+  { nome: 'Bergamota', precoUni: 95.00, uni: 'L' },
+  { nome: 'Cal Virgem', precoUni: 1.40, uni: 'L' },
+  { nome: 'Canela', precoUni: 150.00, uni: 'L' },
+  { nome: 'Capim Limão frag', precoUni: 158.00, uni: 'L' },
+  { nome: 'Capim Limão Jau', precoUni: 158.00, uni: 'L' },
+  { nome: 'Cedro', precoUni: 150.00, uni: 'L' },
+  { nome: 'Cereja e avelã', precoUni: 210.00, uni: 'L' },
+  { nome: 'Chá Branco Frag', precoUni: 120.00, uni: 'L' },
+  { nome: 'chocolate', precoUni: 180.00, uni: 'L' },
+  { nome: 'cloreto de Sodio', precoUni: 3.00, uni: 'L' },
+  { nome: 'corante', precoUni: 0, uni: 'L' },
+  { nome: 'corante azul', precoUni: 150.00, uni: 'L' },
+  { nome: 'Detergente Neltro', precoUni: 5.00, uni: 'L' },
+  { nome: 'EDTA', precoUni: 0, uni: 'L' },
+  { nome: 'Encanto do Oceano', precoUni: 0, uni: 'L' },
+  { nome: 'Encanto do Oceano (Base)', precoUni: 0, uni: 'L' },
+  { nome: 'essencia chocolate', precoUni: 0, uni: 'L' },
+  { nome: 'Essência jasmim', precoUni: 137.00, uni: 'L' },
+  { nome: 'Essência talco', precoUni: 207.00, uni: 'L' },
+  { nome: 'Essência Verão Intenso', precoUni: 95.00, uni: 'L' },
+  { nome: 'Eterno Frag', precoUni: 211.20, uni: 'L' },
+  { nome: 'Eucalipto Globulus', precoUni: 220.00, uni: 'L' },
+  { nome: 'Flor de Cerejeira', precoUni: 265.70, uni: 'L' },
+  { nome: 'Flor de Cerejeira Essencial', precoUni: 95.00, uni: 'L' },
+  { nome: 'Floral Rose', precoUni: 195.40, uni: 'L' },
+  { nome: 'Floral Rose Jau', precoUni: 195.40, uni: 'L' },
+  { nome: 'Glicerina', precoUni: 5.60, uni: 'L' },
+  { nome: 'Glicerina Bidestilada', precoUni: 15.00, uni: 'L' },
+  { nome: 'Goma xantana', precoUni: 0, uni: 'L' },
+  { nome: 'Horizonte das Flores', precoUni: 0, uni: 'L' },
+  { nome: 'Hotelã', precoUni: 190.00, uni: 'L' },
+  { nome: 'HTML', precoUni: 40.00, uni: 'L' },
+  { nome: 'Infinity', precoUni: 120.00, uni: 'L' },
+  { nome: 'Infinity essencial', precoUni: 240.00, uni: 'L' },
+  { nome: 'Jadim de Estrelas', precoUni: 0, uni: 'L' },
+  { nome: 'jasmim amadeirado aromalles', precoUni: 186.00, uni: 'L' },
+  { nome: 'Lauril', precoUni: 11.45, uni: 'L' },
+  { nome: 'Lavanda Francesa', precoUni: 120.00, uni: 'L' },
+  { nome: 'Limão siciliano Frag', precoUni: 95.00, uni: 'L' },
+  { nome: 'Lirio Aromalles', precoUni: 227.60, uni: 'L' },
+  { nome: 'Macadamia Aromalles', precoUni: 182.00, uni: 'L' },
+  { nome: 'Macadamia Frag', precoUni: 258.36, uni: 'L' },
+  { nome: 'Manga py Aromalles', precoUni: 314.00, uni: 'L' },
+  { nome: 'Marruá', precoUni: 270.00, uni: 'L' },
+  { nome: 'Metilparabeno', precoUni: 150.00, uni: 'L' },
+  { nome: 'Mica po Barata', precoUni: 480.00, uni: 'L' },
+  { nome: 'Mica po Cara', precoUni: 1500.00, uni: 'L' },
+  { nome: 'Mirra', precoUni: 150.00, uni: 'L' },
+  { nome: 'OS', precoUni: 40.00, uni: 'L' },
+  { nome: 'Passione', precoUni: 120.00, uni: 'L' },
+  { nome: 'Passione essencial', precoUni: 240.00, uni: 'L' },
+  { nome: 'Patchouli', precoUni: 170.00, uni: 'L' },
+  { nome: 'Peróxido de Hidrogênio', precoUni: 8.00, uni: 'L' },
+  { nome: 'PHMB', precoUni: 77.00, uni: 'L' },
+  { nome: 'potassa', precoUni: 9.00, uni: 'L' },
+  { nome: 'Propilenoglicol', precoUni: 0, uni: 'L' },
+  { nome: 'Resplendor dos Sonhos', precoUni: 0, uni: 'L' },
+  { nome: 'sol. A.Cítrico', precoUni: 0, uni: 'L' },
+  { nome: 'Sulfato de Cobre 25%', precoUni: 17.00, uni: 'L' },
+  { nome: 'Talco Pom Pom', precoUni: 212.27, uni: 'L' },
+  { nome: 'ULTRAPRIME 130', precoUni: 0, uni: 'L' },
+  { nome: 'Vanila Lace', precoUni: 126.00, uni: 'L' },
+  { nome: 'Vanila Lace essencial', precoUni: 105.00, uni: 'L' },
+  { nome: 'vanilla doce', precoUni: 0, uni: 'L' },
+  { nome: 'Vanilla KPh', precoUni: 211.06, uni: 'L' },
+  { nome: 'Vanilla lace aromalles', precoUni: 200.00, uni: 'L' },
+  { nome: 'verão intenso essencial', precoUni: 210.00, uni: 'L' },
+  { nome: 'violeta aromalles', precoUni: 274.00, uni: 'L' },
+  { nome: 'Ylang Ylang', precoUni: 190.00, uni: 'L' }
+];
+
 // --- LISTAS AUXILIARES EXATAS DO SIG OLOR LUZ ---
+export const DEFAULT_PRODUTOS_BASE: string[] = sortAlphabetically([
+  'AURORA DE VANILLA', 'BAMBOO', 'BRISA CELESTIAL', 'CAPIM LIMÃO', 
+  'ENCANTO DO OCEANO', 'FLOR DE CEREJEIRA', 'JARDIM DE ESTRELAS', 'JASMIM', 
+  'LAVANDA', 'RESPLENDOR DOS SONHOS', 'Caixa Kit (15ml) Premium', 
+  'MAGIA NATALINA', 'CHA BRANCO', 'PAPELARIA', 'BLACKOUT', 
+  'CLEAN FULL PET SPRAY', 'CLEAN FULL PET', 'DIFUSOR ELETRICO', 
+  'DIFUSOR ELETRICO + ESSENCIA', 'FLOR DE CACAU', 'CHOCOLATE MENTOLADO'
+]);
+
+export const DEFAULT_PRODUTOS_DETALHADOS: ProdutoItem[] = DEFAULT_PRODUTOS_BASE.map(nome => ({
+  nome,
+  status: 'Ativo'
+}));
+
 export const DEFAULT_LISTAS: ListasSelects = {
   vendedores: [
     'Rosa', 'Cleide', 'Kely', 'Sônia', 'Olor Luz', 'Andreia', 
     'Vivi', 'Tânia Raquel', 'Kathleen', 'Tiktok', 'Jessica Caetano', 'Jean', 'Gabi'
   ],
-  produtos: sortAlphabetically([
-    'AURORA DE VANILLA', 'BAMBOO', 'BRISA CELESTIAL', 'CAPIM LIMÃO', 
-    'ENCANTO DO OCEANO', 'FLOR DE CEREJEIRA', 'JARDIM DE ESTRELAS', 'JASMIM', 
-    'LAVANDA', 'RESPLENDOR DOS SONHOS', 'Caixa Kit (15ml) Premium', 
-    'MAGIA NATALINA', 'CHA BRANCO', 'PAPELARIA', 'BLACKOUT', 
-    'CLEAN FULL PET SPRAY', 'CLEAN FULL PET', 'DIFUSOR ELETRICO', 
-    'DIFUSOR ELETRICO + ESSENCIA', 'FLOR DE CACAU', 'CHOCOLATE MENTOLADO'
-  ]),
+  produtos: DEFAULT_PRODUTOS_BASE,
+  produtosDetalhes: DEFAULT_PRODUTOS_DETALHADOS,
   embalagens: sortAlphabetically([
     '120ML', '130ML', '1L', '(Pet)1L Sabão', '20ML', 'Essencia 20ml', 
     '(Pet) 500ml Spray', 'Caixa Kit (15ml) Premium', 'Caixa Kit 20 ml', 
@@ -52,7 +150,8 @@ export const DEFAULT_LISTAS: ListasSelects = {
   ]),
   tabelasPreco: ['Site', 'Tiktok', 'Venda Direta', 'Consignado', 'Preço Logista'],
   tiposSaida: ['Venda', 'Consignado', 'Bonificação', 'Mostruário', 'Amostra Grátis'],
-  statusComissao: ['Pago', 'Não Pago', 'Pendente', 'Cancelado']
+  statusComissao: ['Pago', 'Não Pago', 'Pendente', 'Cancelado'],
+  materiasPrimas: DEFAULT_MATERIAS_PRIMAS
 };
 
 // --- MATRIZ DE PREÇOS SUGERIDOS POR EMBALAGEM / TABELA ---
@@ -366,14 +465,45 @@ export async function fetchListasEVendas(): Promise<{
         if (Array.isArray(data.vendedores) && data.vendedores.length > 0) {
           CURRENT_LISTAS.vendedores = data.vendedores;
         }
-        if (Array.isArray(data.produtos) && data.produtos.length > 0) {
-          CURRENT_LISTAS.produtos = sortAlphabetically(data.produtos);
+        // Processa produtos e seus respectivos status (Ativo, Inativo, Teste, Uso interno)
+        if (Array.isArray(data.produtosDetalhes) && data.produtosDetalhes.length > 0) {
+          CURRENT_LISTAS.produtosDetalhes = data.produtosDetalhes.map((p: any) => ({
+            nome: typeof p === 'string' ? p.trim() : String(p.nome || '').trim(),
+            status: ((p.status === 'Inativo' || p.status === 'Teste' || p.status === 'Uso interno') ? p.status : 'Ativo') as ProdutoStatus
+          }));
+        } else if (Array.isArray(data.produtos) && data.produtos.length > 0) {
+          // Compatibilidade com listas legadas (marca todas como Ativo por padrão)
+          CURRENT_LISTAS.produtosDetalhes = data.produtos.map((p: any) => {
+            if (typeof p === 'string') {
+              return { nome: p.trim(), status: 'Ativo' as const };
+            }
+            return {
+              nome: String(p.nome || '').trim(),
+              status: ((p.status === 'Inativo' || p.status === 'Teste' || p.status === 'Uso interno') ? p.status : 'Ativo') as ProdutoStatus
+            };
+          });
+        } else {
+          CURRENT_LISTAS.produtosDetalhes = [...DEFAULT_PRODUTOS_DETALHADOS];
         }
+
+        // Apenas os produtos ATIVOS ficam disponíveis para seleção em Vendas
+        CURRENT_LISTAS.produtos = sortAlphabetically(
+          (CURRENT_LISTAS.produtosDetalhes || [])
+            .filter(p => p.status === 'Ativo')
+            .map(p => p.nome)
+        );
         if (Array.isArray(data.tiposSaida) && data.tiposSaida.length > 0) {
           CURRENT_LISTAS.tiposSaida = data.tiposSaida;
         }
         if (Array.isArray(data.embalagens) && data.embalagens.length > 0) {
           CURRENT_LISTAS.embalagens = sortAlphabetically(data.embalagens);
+        }
+        if (Array.isArray(data.materiasPrimas) && data.materiasPrimas.length > 0) {
+          CURRENT_LISTAS.materiasPrimas = data.materiasPrimas.map((m: any) => ({
+            nome: m.nome,
+            precoUni: Number(m.precoUni) || 0,
+            uni: m.uni || m.unidade || 'L'
+          }));
         }
       }
     } catch (configErr) {
@@ -486,17 +616,75 @@ export async function salvarListasCustomizadasApi(
   novasListas: Partial<ListasSelects>
 ): Promise<{ success: boolean; message: string }> {
   if (novasListas.vendedores) CURRENT_LISTAS.vendedores = [...novasListas.vendedores];
-  if (novasListas.produtos) CURRENT_LISTAS.produtos = sortAlphabetically(novasListas.produtos);
+  
+  if (novasListas.produtosDetalhes) {
+    CURRENT_LISTAS.produtosDetalhes = novasListas.produtosDetalhes.map(p => ({
+      nome: p.nome.trim(),
+      status: ((p.status === 'Inativo' || p.status === 'Teste' || p.status === 'Uso interno') ? p.status : 'Ativo') as ProdutoStatus
+    }));
+    CURRENT_LISTAS.produtos = sortAlphabetically(
+      CURRENT_LISTAS.produtosDetalhes
+        .filter(p => p.status === 'Ativo')
+        .map(p => p.nome)
+    );
+  } else if (novasListas.produtos) {
+    CURRENT_LISTAS.produtos = sortAlphabetically(novasListas.produtos);
+    CURRENT_LISTAS.produtosDetalhes = CURRENT_LISTAS.produtos.map(nome => ({
+      nome,
+      status: 'Ativo' as const
+    }));
+  }
+
   if (novasListas.tiposSaida) CURRENT_LISTAS.tiposSaida = [...novasListas.tiposSaida];
   if (novasListas.embalagens) CURRENT_LISTAS.embalagens = sortAlphabetically(novasListas.embalagens);
+  if (novasListas.materiasPrimas) CURRENT_LISTAS.materiasPrimas = [...novasListas.materiasPrimas];
+
+  // Sincroniza o status das fórmulas existentes no Firestore e LocalStorage com base nas alterações de status dos produtos
+  if (CURRENT_LISTAS.produtosDetalhes && CURRENT_LISTAS.produtosDetalhes.length > 0) {
+    const formulasAtuais = getLocalFormulas();
+    let formulasModificadas = false;
+    const formulasPromises: Promise<void>[] = [];
+
+    for (const prodItem of CURRENT_LISTAS.produtosDetalhes) {
+      const nomeNorm = prodItem.nome.trim().toLowerCase();
+      for (let i = 0; i < formulasAtuais.length; i++) {
+        const f = formulasAtuais[i];
+        if (f.produto && f.produto.trim().toLowerCase() === nomeNorm) {
+          if (f.status !== prodItem.status) {
+            f.status = prodItem.status;
+            f.updatedAt = new Date().toISOString();
+            formulasModificadas = true;
+
+            if (f.id && !f.id.startsWith('temp_')) {
+              formulasPromises.push(
+                updateDoc(doc(db, 'formulas', f.id), {
+                  status: prodItem.status,
+                  updatedAt: f.updatedAt
+                }).catch(err => console.warn('Aviso: Erro ao atualizar status da formula no Firestore:', err))
+              );
+            }
+          }
+        }
+      }
+    }
+
+    if (formulasModificadas) {
+      saveLocalFormulas(formulasAtuais);
+    }
+    if (formulasPromises.length > 0) {
+      Promise.all(formulasPromises).catch(err => console.warn('Erro nas promises de fórmulas:', err));
+    }
+  }
 
   try {
     const listasDocRef = doc(db, 'config', 'listasCustomizadas');
     await setDoc(listasDocRef, {
       vendedores: CURRENT_LISTAS.vendedores,
       produtos: CURRENT_LISTAS.produtos,
+      produtosDetalhes: CURRENT_LISTAS.produtosDetalhes || DEFAULT_PRODUTOS_DETALHADOS,
       tiposSaida: CURRENT_LISTAS.tiposSaida,
       embalagens: CURRENT_LISTAS.embalagens,
+      materiasPrimas: CURRENT_LISTAS.materiasPrimas || DEFAULT_MATERIAS_PRIMAS,
       updatedAt: new Date().toISOString()
     }, { merge: true });
 
@@ -886,3 +1074,365 @@ export async function crudUsuarioApi(
     };
   }
 }
+
+// --- FÓRMULAS & ENGENHARIA DE PRODUTOS (P&D) ---
+
+export const STORAGE_KEY_FORMULAS = 'olorluz_formulas_data';
+
+export const DEFAULT_FORMULAS_INICIAIS: Formula[] = [
+  {
+    id: 'FORM-001',
+    produto: 'AURORA DE VANILLA',
+    status: 'Ativo',
+    isCriacaoLivre: false,
+    rendimento: 1000,
+    unidadeRendimento: 'L',
+    custoTotal: 15420.00,
+    custoUnitarioLitro: 15.42,
+    insumos: [
+      {
+        seq: 1,
+        insumo: 'Água',
+        uni: 'L',
+        precoUni: 0.02,
+        baseFormula: 750,
+        metodologia: 'Adicionar água purificada e desmineralizada no tanque principal.',
+        custoTotal: 15.00
+      },
+      {
+        seq: 2,
+        insumo: 'Álcool Cereais',
+        uni: 'L',
+        precoUni: 16.00,
+        baseFormula: 150,
+        metodologia: 'Adicionar álcool de cereais sob agitação constante lenta por 5 minutos.',
+        custoTotal: 2400.00
+      },
+      {
+        seq: 3,
+        insumo: 'Vanilla KPh',
+        uni: 'L',
+        precoUni: 211.06,
+        baseFormula: 60,
+        metodologia: 'Incorporar fragrância concentrada de Vanilla e homogeneizar.',
+        custoTotal: 12663.60
+      },
+      {
+        seq: 4,
+        insumo: 'Propilenoglicol',
+        uni: 'L',
+        precoUni: 8.50,
+        baseFormula: 40,
+        metodologia: 'Adicionar solubilizante e fixador, agitar por 15 minutos até total transparência.',
+        custoTotal: 340.00
+      }
+    ],
+    obs: 'Fórmula padrão para difusores e aromatizadores de 120ml e 500ml. Armazenar em temperatura ambiente.',
+    createdAt: '2026-07-01T10:00:00.000Z',
+    updatedAt: '2026-07-15T14:30:00.000Z'
+  },
+  {
+    id: 'FORM-002',
+    produto: 'BAMBOO',
+    status: 'Ativo',
+    isCriacaoLivre: false,
+    rendimento: 1000,
+    unidadeRendimento: 'L',
+    custoTotal: 11520.00,
+    custoUnitarioLitro: 11.52,
+    insumos: [
+      {
+        seq: 1,
+        insumo: 'Água',
+        uni: 'L',
+        precoUni: 0.02,
+        baseFormula: 800,
+        metodologia: 'Carga inicial de água desmineralizada no reator.',
+        custoTotal: 16.00
+      },
+      {
+        seq: 2,
+        insumo: 'Álcool Etílico',
+        uni: 'L',
+        precoUni: 6.00,
+        baseFormula: 100,
+        metodologia: 'Misturar álcool neutro 96° GL.',
+        custoTotal: 600.00
+      },
+      {
+        seq: 3,
+        insumo: 'Bamboo Dreams essencial',
+        uni: 'L',
+        precoUni: 95.00,
+        baseFormula: 100,
+        metodologia: 'Adicionar essência Bamboo Dreams sob agitação suave por 10 min.',
+        custoTotal: 9500.00
+      },
+      {
+        seq: 4,
+        insumo: 'Acticide BR 7530',
+        uni: 'L',
+        precoUni: 14.15,
+        baseFormula: 100,
+        metodologia: 'Adicionar conservante cosmético e homogeneizar até limpidez.',
+        custoTotal: 1415.00
+      }
+    ],
+    obs: 'Fragrância herbal fresca de alta saída. Teste de estabilidade e turbidez aprovado.',
+    createdAt: '2026-07-05T11:00:00.000Z',
+    updatedAt: '2026-07-20T09:00:00.000Z'
+  },
+  {
+    id: 'FORM-003',
+    produto: 'Base Jardim de Estrelas',
+    status: 'Uso interno',
+    isCriacaoLivre: true,
+    rendimento: 1000,
+    unidadeRendimento: 'L',
+    custoTotal: 164100.00,
+    custoUnitarioLitro: 164.10,
+    insumos: [
+      {
+        seq: 1,
+        insumo: 'verão intenso essencial',
+        uni: 'L',
+        precoUni: 210.00,
+        baseFormula: 340,
+        metodologia: 'Carga principal de essência Verão Intenso sob agitação constante.',
+        custoTotal: 71400.00
+      },
+      {
+        seq: 2,
+        insumo: 'Passione',
+        uni: 'L',
+        precoUni: 120.00,
+        baseFormula: 510,
+        metodologia: 'Adicionar fragrância Passione e homogeneizar por 10 minutos.',
+        custoTotal: 61200.00
+      },
+      {
+        seq: 3,
+        insumo: 'Flor de Cerejeira Essencial',
+        uni: 'L',
+        precoUni: 240.00,
+        baseFormula: 100,
+        metodologia: 'Incorporar Flor de Cerejeira Essencial como nota floral de topo.',
+        custoTotal: 24000.00
+      },
+      {
+        seq: 4,
+        insumo: 'Mirra',
+        uni: 'L',
+        precoUni: 150.00,
+        baseFormula: 50,
+        metodologia: 'Adicionar Mirra para sustentação, fixação e corpo da base aromática.',
+        custoTotal: 7500.00
+      }
+    ],
+    obs: 'Base aromática de uso interno exclusiva. Calibrada e fechada no padrão industrial de 1.000 Litros com unidades em L.',
+    createdAt: '2026-08-01T08:00:00.000Z',
+    updatedAt: '2026-08-10T10:00:00.000Z'
+  }
+];
+
+export function getLocalFormulas(): Formula[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_FORMULAS);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(f => normalizarFormulaCompleta(f));
+      }
+    }
+  } catch (e) {
+    console.error('Erro ao ler fórmulas do localStorage:', e);
+  }
+  return DEFAULT_FORMULAS_INICIAIS.map(f => normalizarFormulaCompleta(f));
+}
+
+export function saveLocalFormulas(formulas: Formula[]): void {
+  try {
+    const normalizadas = formulas.map(f => normalizarFormulaCompleta(f));
+    localStorage.setItem(STORAGE_KEY_FORMULAS, JSON.stringify(normalizadas));
+  } catch (e) {
+    console.error('Erro ao salvar fórmulas no localStorage:', e);
+  }
+}
+
+export async function getFormulasApi(): Promise<Formula[]> {
+  try {
+    const formulasCol = collection(db, 'formulas');
+    const querySnap = await getDocs(formulasCol);
+    const result: Formula[] = [];
+
+    querySnap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      const parsedFormula: Formula = {
+        id: docSnap.id,
+        produto: data.produto || '',
+        status: (data.status || 'Ativo') as ProdutoStatus,
+        isCriacaoLivre: Boolean(data.isCriacaoLivre),
+        rendimento: Number(data.rendimento) || 1000,
+        unidadeRendimento: data.unidadeRendimento || 'L',
+        custoTotal: Number(data.custoTotal) || 0,
+        custoUnitarioLitro: Number(data.custoUnitarioLitro) || 0,
+        insumos: Array.isArray(data.insumos) ? data.insumos.map((item: any, idx: number) => ({
+          seq: Number(item.seq) || (idx + 1),
+          insumo: item.insumo || '',
+          uni: item.uni || 'L',
+          precoUni: Number(item.precoUni) || 0,
+          baseFormula: Number(item.baseFormula) || 0,
+          metodologia: item.metodologia || '',
+          custoTotal: Number(item.custoTotal) || 0
+        })) : [],
+        obs: data.obs || '',
+        createdAt: data.createdAt || '',
+        updatedAt: data.updatedAt || ''
+      };
+
+      // Garante normalização de fórmulas criadas anteriormente ou com unidades de ensaio
+      result.push(normalizarFormulaCompleta(parsedFormula));
+    });
+
+    if (result.length === 0) {
+      // Se a coleção estiver vazia no Firestore, inicializa com os dados padrão locais
+      const local = getLocalFormulas();
+      if (local.length > 0) return local;
+      return DEFAULT_FORMULAS_INICIAIS.map(f => normalizarFormulaCompleta(f));
+    }
+
+    // Sincroniza status com CURRENT_LISTAS.produtosDetalhes se houver alteração
+    if (CURRENT_LISTAS.produtosDetalhes && CURRENT_LISTAS.produtosDetalhes.length > 0) {
+      result.forEach(f => {
+        const prodMatch = CURRENT_LISTAS.produtosDetalhes?.find(
+          p => p.nome.trim().toLowerCase() === (f.produto || '').trim().toLowerCase()
+        );
+        if (prodMatch && prodMatch.status) {
+          f.status = prodMatch.status;
+        }
+      });
+    }
+
+    saveLocalFormulas(result);
+    return result;
+  } catch (err) {
+    console.error('Erro ao buscar fórmulas do Firestore:', err);
+    return getLocalFormulas();
+  }
+}
+
+export async function salvarFormulaApi(formula: Formula): Promise<{
+  success: boolean;
+  message: string;
+  formulaSalva: Formula;
+}> {
+  // 1. Normaliza a fórmula integralmente para o padrão de 1.000 Litros
+  const formulaFinal = normalizarFormulaCompleta({ ...formula });
+
+  // 2. Atualiza Optimisticamente no cache local
+  const formulasAtuais = getLocalFormulas();
+  const indexExistente = formulasAtuais.findIndex(f => f.id === formulaFinal.id);
+
+  if (indexExistente >= 0) {
+    formulaFinal.updatedAt = new Date().toISOString();
+    formulasAtuais[indexExistente] = formulaFinal;
+  } else {
+    formulaFinal.createdAt = formulaFinal.createdAt || new Date().toISOString();
+    formulaFinal.updatedAt = new Date().toISOString();
+    formulasAtuais.unshift(formulaFinal);
+  }
+  saveLocalFormulas(formulasAtuais);
+
+  // 3. Sincroniza a Lista Global de Produtos no Firestore / Estado com o status da fórmula
+  if (formulaFinal.produto && formulaFinal.produto.trim()) {
+    const nomeNormalizado = formulaFinal.produto.trim();
+    const indexProduto = (CURRENT_LISTAS.produtosDetalhes || []).findIndex(
+      p => p.nome.trim().toLowerCase() === nomeNormalizado.toLowerCase()
+    );
+
+    let novosDetalhes = [...(CURRENT_LISTAS.produtosDetalhes || [])];
+    if (indexProduto >= 0) {
+      novosDetalhes[indexProduto] = {
+        ...novosDetalhes[indexProduto],
+        status: formulaFinal.status || 'Ativo'
+      };
+    } else {
+      novosDetalhes.push({
+        nome: nomeNormalizado,
+        status: formulaFinal.status || 'Ativo'
+      });
+    }
+
+    CURRENT_LISTAS.produtosDetalhes = novosDetalhes;
+    CURRENT_LISTAS.produtos = sortAlphabetically(
+      novosDetalhes.filter(p => p.status === 'Ativo').map(p => p.nome)
+    );
+
+    // Salva a lista de produtos atualizada no Firestore
+    salvarListasCustomizadasApi({ produtosDetalhes: novosDetalhes }).catch(err => {
+      console.warn('Erro ao sincronizar produto na lista global:', err);
+    });
+  }
+
+  // 3. Salva no Firestore
+  try {
+    const payload = {
+      produto: formulaFinal.produto,
+      status: formulaFinal.status,
+      isCriacaoLivre: formulaFinal.isCriacaoLivre,
+      rendimento: formulaFinal.rendimento,
+      unidadeRendimento: formulaFinal.unidadeRendimento,
+      custoTotal: formulaFinal.custoTotal,
+      custoUnitarioLitro: formulaFinal.custoUnitarioLitro,
+      insumos: formulaFinal.insumos,
+      obs: formulaFinal.obs || '',
+      updatedAt: formulaFinal.updatedAt,
+      createdAt: formulaFinal.createdAt
+    };
+
+    if (formulaFinal.id && !formulaFinal.id.startsWith('temp_')) {
+      await updateDoc(doc(db, 'formulas', formulaFinal.id), payload);
+    } else {
+      const docRef = await addDoc(collection(db, 'formulas'), payload);
+      formulaFinal.id = docRef.id;
+      // Atualiza o ID no cache local
+      const localUpdated = getLocalFormulas().map(f => f.id === formula.id ? formulaFinal : f);
+      saveLocalFormulas(localUpdated);
+    }
+
+    return {
+      success: true,
+      message: `Fórmula de "${formulaFinal.produto}" salva com sucesso no Firebase!`,
+      formulaSalva: formulaFinal
+    };
+  } catch (err: any) {
+    console.error('Erro ao salvar fórmula no Firestore:', err);
+    return {
+      success: true,
+      message: `Fórmula salva localmente com sucesso.`,
+      formulaSalva: formulaFinal
+    };
+  }
+}
+
+export async function excluirFormulaApi(formulaId: string): Promise<{ success: boolean; message: string }> {
+  // 1. Remove do cache local
+  const formulasAtuais = getLocalFormulas().filter(f => f.id !== formulaId);
+  saveLocalFormulas(formulasAtuais);
+
+  // 2. Remove do Firestore
+  try {
+    await deleteDoc(doc(db, 'formulas', formulaId));
+    return {
+      success: true,
+      message: 'Fórmula excluída com sucesso do Firebase!'
+    };
+  } catch (err: any) {
+    console.error('Erro ao excluir fórmula do Firestore:', err);
+    return {
+      success: true,
+      message: 'Fórmula removida localmente.'
+    };
+  }
+}
+

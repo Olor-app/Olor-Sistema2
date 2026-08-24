@@ -78,20 +78,35 @@ export const ComissoesView: React.FC<ComissoesViewProps> = ({
 
   // Anos disponíveis
   const anosDisponiveis = useMemo(() => {
-    const anosUnicos = Array.from(new Set(vendas.map(v => v.ano).filter(Boolean)));
+    const vendasSemOlorLuz = vendas.filter(v => {
+      const norm = (v.vendedor || '').trim().toLowerCase();
+      return !norm.includes('olor luz') && !norm.includes('olorluz');
+    });
+    const anosUnicos: number[] = Array.from(new Set(vendasSemOlorLuz.map(v => Number(v.ano)).filter(a => !isNaN(a) && a > 0)));
     const anoAtualNum = hoje.getFullYear();
     if (!anosUnicos.includes(anoAtualNum)) anosUnicos.push(anoAtualNum);
-    return anosUnicos.sort((a, b) => b - a);
+    return anosUnicos.sort((a: number, b: number) => b - a);
   }, [vendas]);
 
-  // Vendedores ordenados
+  // Vendedores ordenados (excluindo Olor Luz)
   const vendedoresDisponiveis = useMemo(() => {
-    return [...(listas.vendedores || [])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return [...(listas.vendedores || [])]
+      .filter(v => {
+        const norm = (v || '').trim().toLowerCase();
+        return !norm.includes('olor luz') && !norm.includes('olorluz');
+      })
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [listas.vendedores]);
 
   // 1. Filtragem principal dos dados de vendas
   const vendasFiltradas = useMemo(() => {
     return vendas.filter((item) => {
+      // Vendas feitas pela Olor Luz não devem aparecer nem ser contabilizadas na tela de comissões
+      const vendedorNomeNorm = (item.vendedor || '').trim().toLowerCase();
+      if (vendedorNomeNorm.includes('olor luz') || vendedorNomeNorm.includes('olorluz')) {
+        return false;
+      }
+
       // Perfil Vendedor só enxerga suas próprias comissões
       if (!isMaster) {
         if (item.vendedor.toLowerCase() !== currentUser.nome.toLowerCase()) {

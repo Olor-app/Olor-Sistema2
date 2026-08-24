@@ -1,6 +1,6 @@
 {
   "name": "SIG Olor Luz",
-  "description": "ERP web para gestão de vendas, comissionamento e estoque do Olor Luz integrado ao Firebase NoSQL (Auth e Firestore).",
+  "description": "ERP web para gestão de vendas, comissionamento, listas, engenharia de produtos e fórmulas P&D integrado ao Firebase NoSQL (Auth e Firestore).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

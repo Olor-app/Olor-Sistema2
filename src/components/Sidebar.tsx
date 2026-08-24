@@ -20,10 +20,11 @@ import {
   LogOut,
   ShieldCheck,
   UserCheck,
-  ListChecks
+  ListChecks,
+  FlaskConical
 } from 'lucide-react';
 
-export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'comissoes' | 'tabela-precos' | 'listas' | 'gestao-usuarios';
+export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'comissoes' | 'tabela-precos' | 'formulas' | 'listas' | 'gestao-usuarios';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -95,6 +96,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Preços & Embalagens',
       description: 'Matriz de Produtos & Preços',
       icon: DollarSign,
+      allowedRoles: ['Master']
+    },
+    {
+      id: 'formulas' as TabType,
+      label: 'Fórmulas',
+      description: 'Engenharia & Fórmulas P&D',
+      icon: FlaskConical,
+      badge: 'P&D',
+      badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
       allowedRoles: ['Master']
     },
     {
