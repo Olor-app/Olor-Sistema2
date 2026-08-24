@@ -400,313 +400,517 @@ export const FormulasView: React.FC<FormulasViewProps> = ({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              
-              {/* CABEÇALHO DA TABELA PAI */}
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/80 text-[11px] font-bold text-slate-400 uppercase font-mono tracking-wider">
-                  <th className="py-3.5 px-4 w-12 text-center">#</th>
-                  <th className="py-3.5 px-4">Produto / Fragrância</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4">Rendimento Base</th>
-                  <th className="py-3.5 px-4 text-right">Custo Unitário (R$)/L</th>
-                  <th className="py-3.5 px-4 text-right">Custo do Lote</th>
-                  <th className="py-3.5 px-4 text-center">Insumos</th>
-                  <th className="py-3.5 px-4 text-right">Ações</th>
-                </tr>
-              </thead>
+          <>
+            {/* VISUALIZAÇÃO EM CARDS PARA MOBILE (Aparece apenas em telas menores que md) */}
+            <div className="block md:hidden divide-y divide-slate-800">
+              {formulasFiltradas.map((formula) => {
+                const isExpandida = Boolean(linhasExpandidas[formula.id]);
 
-              {/* CORPO DA TABELA PAI COM LINHAS FILHAS EXPANSÍVEIS */}
-              <tbody className="divide-y divide-slate-800/60 text-xs text-slate-200">
-                {formulasFiltradas.map((formula) => {
-                  const isExpandida = Boolean(linhasExpandidas[formula.id]);
-
-                  return (
-                    <React.Fragment key={formula.id}>
-                      
-                      {/* LINHA PAI */}
-                      <tr 
-                        className={`hover:bg-slate-800/40 transition-colors cursor-pointer ${
-                          isExpandida ? 'bg-slate-800/30' : ''
-                        }`}
-                        onClick={() => toggleExpansao(formula.id)}
-                      >
-                        
-                        {/* ÍCONE DE ACCORDION EXPANDIR/RECOLHER */}
-                        <td className="py-3.5 px-4 text-center">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleExpansao(formula.id);
-                            }}
-                            className="p-1 rounded-lg hover:bg-slate-700/60 text-slate-400 transition-transform"
-                          >
-                            {isExpandida ? (
-                              <ChevronDown className="w-4 h-4 text-amber-400" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4 text-slate-400" />
-                            )}
-                          </button>
-                        </td>
-
-                        {/* PRODUTO COM BADGES */}
-                        <td className="py-3.5 px-4 font-semibold text-slate-100">
-                          <div className="flex items-center gap-2">
-                            <span className="font-cinzel text-sm text-amber-200">
-                              {formula.produto}
-                            </span>
-                            {formula.isCriacaoLivre && (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                                <Sparkles className="w-2.5 h-2.5" />
-                                <span>Laboratório P&D</span>
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* STATUS COM SELECT RÁPIDO */}
-                        <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                          <div className="inline-block relative">
-                            <select
-                              value={formula.status || 'Ativo'}
-                              onChange={(e) => handleQuickStatusChange(formula, e.target.value as ProdutoStatus)}
-                              className={`text-[10px] font-bold rounded-full px-2.5 py-1 border transition-all cursor-pointer focus:outline-none appearance-none pr-5 bg-slate-950/90 ${
-                                formula.status === 'Ativo'
-                                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:border-emerald-400'
-                                  : formula.status === 'Uso interno'
-                                    ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30 hover:border-cyan-400'
-                                    : formula.status === 'Teste'
-                                      ? 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:border-amber-400'
-                                      : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
-                              }`}
-                              title="Alterar status da fórmula"
-                            >
-                              <option value="Ativo" className="bg-slate-900 text-emerald-400 font-bold">● Ativo</option>
-                              <option value="Uso interno" className="bg-slate-900 text-cyan-300 font-bold">● Uso interno</option>
-                              <option value="Teste" className="bg-slate-900 text-amber-300 font-bold">● Teste</option>
-                              <option value="Inativo" className="bg-slate-900 text-slate-400 font-bold">● Inativo</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1.5 text-slate-500 text-[8px]">
-                              ▼
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* RENDIMENTO BASE */}
-                        <td className="py-3.5 px-4 font-mono text-slate-300">
-                          {formula.isCriacaoLivre ? (
-                            <span>{formula.rendimento} {formula.unidadeRendimento}</span>
-                          ) : (
-                            <span className="text-amber-300/90 font-bold">1.000 L</span>
-                          )}
-                        </td>
-
-                        {/* CUSTO UNITÁRIO (R$)/L NORMALIZADO */}
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-300 text-sm">
-                          {formatarValorUnitarioLitro(formula.custoUnitarioLitro)}
-                          <span className="text-[10px] font-normal text-emerald-400/70 ml-1">/ L</span>
-                        </td>
-
-                        {/* CUSTO TOTAL DO LOTE */}
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-300">
-                          {formatarMoeda(formula.custoTotal)}
-                        </td>
-
-                        {/* QUANTIDADE DE INSUMOS */}
-                        <td className="py-3.5 px-4 text-center">
-                          <span className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400">
-                            {formula.insumos?.length || 0} itens
+                return (
+                  <div 
+                    key={`mobile-${formula.id}`} 
+                    className="p-4 space-y-3.5 bg-slate-900/90 hover:bg-slate-900 transition-colors"
+                  >
+                    {/* Topo do Card: Nome do Produto/Fragrância e Status */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1 overflow-hidden">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-cinzel text-sm font-bold text-amber-200 leading-snug">
+                            {formula.produto}
                           </span>
-                        </td>
+                          {formula.isCriacaoLivre && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                              <Sparkles className="w-2.5 h-2.5" />
+                              <span>P&D</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-mono">
+                          ID: {formula.id.startsWith('temp_') ? 'Novo' : formula.id}
+                        </p>
+                      </div>
 
-                        {/* AÇÕES (EDITAR, DUPLICAR, EXCLUIR) */}
-                        <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end space-x-1.5">
-                            
-                            {/* BOTÃO DUPLICAR */}
-                            <button
-                              type="button"
-                              onClick={() => handleDuplicarFormula(formula)}
-                              className="p-1.5 text-slate-400 hover:text-purple-300 hover:bg-purple-500/10 rounded-lg transition-colors"
-                              title="Criar variação de P&D (Cópia)"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
+                      {/* Seletor Rápido de Status */}
+                      <div className="inline-block relative shrink-0">
+                        <select
+                          value={formula.status || 'Ativo'}
+                          onChange={(e) => handleQuickStatusChange(formula, e.target.value as ProdutoStatus)}
+                          className={`text-[10px] font-bold rounded-full px-2.5 py-1 border transition-all cursor-pointer focus:outline-none appearance-none pr-5 bg-slate-950/90 ${
+                            formula.status === 'Ativo'
+                              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                              : formula.status === 'Uso interno'
+                                ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                                : formula.status === 'Teste'
+                                  ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}
+                          title="Alterar status da fórmula"
+                        >
+                          <option value="Ativo" className="bg-slate-900 text-emerald-400 font-bold">● Ativo</option>
+                          <option value="Uso interno" className="bg-slate-900 text-cyan-300 font-bold">● Uso interno</option>
+                          <option value="Teste" className="bg-slate-900 text-amber-300 font-bold">● Teste</option>
+                          <option value="Inativo" className="bg-slate-900 text-slate-400 font-bold">● Inativo</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1.5 text-slate-500 text-[8px]">
+                          ▼
+                        </div>
+                      </div>
+                    </div>
 
-                            {/* BOTÃO EDITAR */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormulaEmEdicao(formula);
-                                setModalAberto(true);
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors"
-                              title="Editar Fórmula"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
+                    {/* Grid Interno de 2 Colunas: Custo Unitário, Custo Lote, Rendimento, Insumos */}
+                    <div className="grid grid-cols-2 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800/80 font-mono text-xs">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] text-slate-500 block uppercase">Custo Unitário</span>
+                        <span className="text-xs font-bold text-emerald-300">
+                          {formatarValorUnitarioLitro(formula.custoUnitarioLitro)}
+                          <span className="text-[9px] font-normal text-emerald-400/70 ml-1">/L</span>
+                        </span>
+                      </div>
 
-                            {/* BOTÃO EXCLUIR */}
-                            <button
-                              type="button"
-                              onClick={() => setIdParaExcluir(formula.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                              title="Excluir Fórmula"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] text-slate-500 block uppercase">Custo do Lote</span>
+                        <span className="text-xs font-bold text-amber-300">
+                          {formatarMoeda(formula.custoTotal)}
+                        </span>
+                      </div>
 
+                      <div className="space-y-0.5 pt-2 border-t border-slate-800/60">
+                        <span className="text-[10px] text-slate-500 block uppercase">Rendimento Base</span>
+                        <span className="text-xs font-semibold text-slate-300">
+                          {formula.isCriacaoLivre ? `${formula.rendimento} ${formula.unidadeRendimento}` : '1.000 L'}
+                        </span>
+                      </div>
+
+                      <div className="space-y-0.5 pt-2 border-t border-slate-800/60">
+                        <span className="text-[10px] text-slate-500 block uppercase">Insumos Químicos</span>
+                        <span className="text-xs font-semibold text-slate-300">
+                          {formula.insumos?.length || 0} item(ns)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Rodapé do Card: Ações Agrupadas (Touch Target >= 44px) */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpansao(formula.id)}
+                        className="flex-1 py-2.5 px-3 bg-slate-950 hover:bg-slate-800 active:scale-[0.98] text-amber-300 border border-slate-800 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 min-h-[44px] transition-all"
+                      >
+                        {isExpandida ? <ChevronDown className="w-4 h-4 text-amber-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                        <span>{isExpandida ? 'Ocultar Insumos' : `Ver Insumos (${formula.insumos?.length || 0})`}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDuplicarFormula(formula)}
+                        className="p-2.5 bg-slate-950 hover:bg-purple-500/20 active:scale-95 text-purple-300 border border-slate-800 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center transition-all"
+                        title="Duplicar Fórmula (P&D)"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormulaEmEdicao(formula);
+                          setModalAberto(true);
+                        }}
+                        className="p-2.5 bg-slate-950 hover:bg-amber-500/20 active:scale-95 text-amber-400 border border-slate-800 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center transition-all"
+                        title="Editar Fórmula"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIdParaExcluir(formula.id)}
+                        className="p-2.5 bg-slate-950 hover:bg-rose-500/20 active:scale-95 text-rose-400 border border-slate-800 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center transition-all"
+                        title="Excluir Fórmula"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Insumos Expandidos no Mobile (Accordion) */}
+                    {isExpandida && (
+                      <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-3 mt-2 animate-fadeIn text-xs">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                          <div className="flex items-center gap-1.5 text-amber-300 font-mono text-[11px] font-bold uppercase tracking-wider">
+                            <Beaker className="w-3.5 h-3.5" />
+                            <span>Insumos Químicos</span>
                           </div>
-                        </td>
+                          <span className="text-[10px] font-mono text-emerald-400">
+                            {formatarValorUnitarioLitro(formula.custoUnitarioLitro)}/L
+                          </span>
+                        </div>
 
-                      </tr>
-
-                      {/* LINHA FILHA (ACCORDION EXPANDIDO) */}
-                      {isExpandida && (
-                        <tr className="bg-slate-950/70 border-b border-slate-800">
-                          <td colSpan={8} className="p-4 sm:p-6">
-                            <div className="space-y-4 rounded-xl bg-slate-900/90 border border-slate-800 p-4 sm:p-5">
-                              
-                              {/* CABEÇALHO DO ACCORDION COM METODOLOGIA E DETALHES */}
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                                <div className="flex items-center gap-2">
-                                  <div className="p-2 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                                    <Beaker className="w-4 h-4" />
-                                  </div>
-                                  <div>
-                                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300 font-mono">
-                                      Detalhamento Químico & Insumos — {formula.produto}
-                                    </h4>
-                                    <p className="text-[11px] text-slate-400">
-                                      Rendimento da receita: {formula.rendimento} {formula.unidadeRendimento} 
-                                      {formula.isCriacaoLivre && ` • Normalizado para base de 1.000 Litros`}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-3 self-end sm:self-auto">
-                                  <div className="text-right">
-                                    <span className="text-[10px] text-slate-400 block font-mono">
-                                      Custo Normalizado:
+                        {formula.insumos && formula.insumos.length > 0 ? (
+                          <div className="divide-y divide-slate-800/80">
+                            {formula.insumos.map((item, idx) => (
+                              <div key={idx} className="py-2.5 space-y-1">
+                                <div className="flex items-center justify-between font-semibold text-slate-100 gap-2">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-mono text-amber-400/80 text-[10px] font-bold">
+                                      #{item.seq || idx + 1}
                                     </span>
-                                    <span className="text-xs font-mono font-bold text-emerald-300">
-                                      {formatarValorUnitarioLitro(formula.custoUnitarioLitro)} / Litro
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* TABELA FILHA DE INSUMOS */}
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse text-xs">
-                                  <thead>
-                                    <tr className="border-b border-slate-800 bg-slate-950/60 text-[10px] font-bold text-slate-400 uppercase font-mono">
-                                      <th className="py-2.5 px-3 text-center w-12">Seq</th>
-                                      <th className="py-2.5 px-3">Insumo (Matéria-Prima)</th>
-                                      <th className="py-2.5 px-3 text-center">UNI</th>
-                                      <th className="py-2.5 px-3 text-right">R$ Unitário</th>
-                                      <th className="py-2.5 px-3 text-right">Base Fórmula (Qtd)</th>
-                                      <th className="py-2.5 px-3">Metodologia / Instrução de Adição</th>
-                                      <th className="py-2.5 px-3 text-right">Custo Total</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-800/40 font-medium">
-                                    {formula.insumos && formula.insumos.length > 0 ? (
-                                      formula.insumos.map((item, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-800/30">
-                                          
-                                          {/* SEQ */}
-                                          <td className="py-2.5 px-3 text-center font-mono font-bold text-amber-300/80">
-                                            {item.seq || idx + 1}
-                                          </td>
-
-                                          {/* NOME DO INSUMO */}
-                                          <td className="py-2.5 px-3 font-semibold text-slate-200">
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                              <span>{item.insumo}</span>
-                                              {formulas.some(f => f.status === 'Uso interno' && f.produto.trim().toLowerCase() === item.insumo.trim().toLowerCase()) && (
-                                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-500/30 px-1.5 py-0.5 rounded">
-                                                  <Factory className="w-2.5 h-2.5 text-cyan-400" /> Base Interna (P&D)
-                                                </span>
-                                              )}
-                                            </div>
-                                          </td>
-
-                                          {/* UNI */}
-                                          <td className="py-2.5 px-3 text-center">
-                                            <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] font-mono text-slate-300">
-                                              {item.uni || 'L'}
-                                            </span>
-                                          </td>
-
-                                          {/* R$ UNI */}
-                                          <td className="py-2.5 px-3 text-right font-mono text-slate-400">
-                                            {formatarMoeda(item.precoUni)}
-                                          </td>
-
-                                          {/* BASE FÓRMULA (QTD) */}
-                                          <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-200">
-                                            {item.baseFormula} {item.uni || 'L'}
-                                          </td>
-
-                                          {/* METODOLOGIA */}
-                                          <td className="py-2.5 px-3 text-slate-300">
-                                            {item.metodologia ? (
-                                              <span className="italic text-slate-300">
-                                                {item.metodologia}
-                                              </span>
-                                            ) : (
-                                              <span className="text-slate-600 text-[11px]">
-                                                (Adição direta padrão)
-                                              </span>
-                                            )}
-                                          </td>
-
-                                          {/* CUSTO TOTAL */}
-                                          <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-300">
-                                            {formatarMoeda(item.custoTotal)}
-                                          </td>
-
-                                        </tr>
-                                      ))
-                                    ) : (
-                                      <tr>
-                                        <td colSpan={7} className="py-4 text-center text-slate-500">
-                                          Nenhum insumo especificado nesta fórmula.
-                                        </td>
-                                      </tr>
+                                    <span>{item.insumo}</span>
+                                    {formulas.some(f => f.status === 'Uso interno' && f.produto.trim().toLowerCase() === item.insumo.trim().toLowerCase()) && (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-500/30 px-1.5 py-0.5 rounded">
+                                        <Factory className="w-2.5 h-2.5 text-cyan-400" /> Base
+                                      </span>
                                     )}
-                                  </tbody>
-                                </table>
-                              </div>
-
-                              {/* OBSERVAÇÕES GERAIS (OBS) */}
-                              {formula.obs && (
-                                <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-1">
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono flex items-center gap-1.5">
-                                    <Info className="w-3.5 h-3.5 text-amber-400" />
-                                    <span>Observações Gerais & Processo de Envase:</span>
+                                  </div>
+                                  <span className="font-mono text-emerald-300 font-bold">
+                                    {formatarMoeda(item.custoTotal)}
                                   </span>
-                                  <p className="text-xs text-slate-300 whitespace-pre-wrap">
-                                    {formula.obs}
-                                  </p>
                                 </div>
+
+                                <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                                  <span>Qtd: <strong className="text-amber-200">{item.baseFormula} {item.uni || 'L'}</strong></span>
+                                  <span>R$ Uni: {formatarMoeda(item.precoUni)}</span>
+                                </div>
+
+                                {item.metodologia && (
+                                  <p className="text-[10px] text-slate-400 italic bg-slate-900/60 rounded px-2.5 py-1.5 border border-slate-800/60">
+                                    {item.metodologia}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-center text-slate-500 text-xs py-2">
+                            Nenhum insumo cadastrado nesta fórmula.
+                          </p>
+                        )}
+
+                        {formula.obs && (
+                          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-2.5 space-y-1 mt-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono flex items-center gap-1">
+                              <Info className="w-3 h-3 text-amber-400" />
+                              <span>Observações:</span>
+                            </span>
+                            <p className="text-xs text-slate-300 whitespace-pre-wrap">
+                              {formula.obs}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* VISUALIZAÇÃO EM TABELA PARA DESKTOP (Aparece apenas em telas md e maiores) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                
+                {/* CABEÇALHO DA TABELA PAI */}
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950/80 text-[11px] font-bold text-slate-400 uppercase font-mono tracking-wider">
+                    <th className="py-3.5 px-4 w-12 text-center">#</th>
+                    <th className="py-3.5 px-4">Produto / Fragrância</th>
+                    <th className="py-3.5 px-4">Status</th>
+                    <th className="py-3.5 px-4">Rendimento Base</th>
+                    <th className="py-3.5 px-4 text-right">Custo Unitário (R$)/L</th>
+                    <th className="py-3.5 px-4 text-right">Custo do Lote</th>
+                    <th className="py-3.5 px-4 text-center">Insumos</th>
+                    <th className="py-3.5 px-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+
+                {/* CORPO DA TABELA PAI COM LINHAS FILHAS EXPANSÍVEIS */}
+                <tbody className="divide-y divide-slate-800/60 text-xs text-slate-200">
+                  {formulasFiltradas.map((formula) => {
+                    const isExpandida = Boolean(linhasExpandidas[formula.id]);
+
+                    return (
+                      <React.Fragment key={formula.id}>
+                        
+                        {/* LINHA PAI */}
+                        <tr 
+                          className={`hover:bg-slate-800/40 transition-colors cursor-pointer ${
+                            isExpandida ? 'bg-slate-800/30' : ''
+                          }`}
+                          onClick={() => toggleExpansao(formula.id)}
+                        >
+                          
+                          {/* ÍCONE DE ACCORDION EXPANDIR/RECOLHER */}
+                          <td className="py-3.5 px-4 text-center">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleExpansao(formula.id);
+                              }}
+                              className="p-1 rounded-lg hover:bg-slate-700/60 text-slate-400 transition-transform"
+                            >
+                              {isExpandida ? (
+                                <ChevronDown className="w-4 h-4 text-amber-400" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-slate-400" />
                               )}
+                            </button>
+                          </td>
+
+                          {/* PRODUTO COM BADGES */}
+                          <td className="py-3.5 px-4 font-semibold text-slate-100">
+                            <div className="flex items-center gap-2">
+                              <span className="font-cinzel text-sm text-amber-200">
+                                {formula.produto}
+                              </span>
+                              {formula.isCriacaoLivre && (
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                  <Sparkles className="w-2.5 h-2.5" />
+                                  <span>Laboratório P&D</span>
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* STATUS COM SELECT RÁPIDO */}
+                          <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
+                            <div className="inline-block relative">
+                              <select
+                                value={formula.status || 'Ativo'}
+                                onChange={(e) => handleQuickStatusChange(formula, e.target.value as ProdutoStatus)}
+                                className={`text-[10px] font-bold rounded-full px-2.5 py-1 border transition-all cursor-pointer focus:outline-none appearance-none pr-5 bg-slate-950/90 ${
+                                  formula.status === 'Ativo'
+                                    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:border-emerald-400'
+                                    : formula.status === 'Uso interno'
+                                      ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30 hover:border-cyan-400'
+                                      : formula.status === 'Teste'
+                                        ? 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:border-amber-400'
+                                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
+                                }`}
+                                title="Alterar status da fórmula"
+                              >
+                                <option value="Ativo" className="bg-slate-900 text-emerald-400 font-bold">● Ativo</option>
+                                <option value="Uso interno" className="bg-slate-900 text-cyan-300 font-bold">● Uso interno</option>
+                                <option value="Teste" className="bg-slate-900 text-amber-300 font-bold">● Teste</option>
+                                <option value="Inativo" className="bg-slate-900 text-slate-400 font-bold">● Inativo</option>
+                              </select>
+                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1.5 text-slate-500 text-[8px]">
+                                ▼
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* RENDIMENTO BASE */}
+                          <td className="py-3.5 px-4 font-mono text-slate-300">
+                            {formula.isCriacaoLivre ? (
+                              <span>{formula.rendimento} {formula.unidadeRendimento}</span>
+                            ) : (
+                              <span className="text-amber-300/90 font-bold">1.000 L</span>
+                            )}
+                          </td>
+
+                          {/* CUSTO UNITÁRIO (R$)/L NORMALIZADO */}
+                          <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-300 text-sm">
+                            {formatarValorUnitarioLitro(formula.custoUnitarioLitro)}
+                            <span className="text-[10px] font-normal text-emerald-400/70 ml-1">/ L</span>
+                          </td>
+
+                          {/* CUSTO TOTAL DO LOTE */}
+                          <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-300">
+                            {formatarMoeda(formula.custoTotal)}
+                          </td>
+
+                          {/* QUANTIDADE DE INSUMOS */}
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400">
+                              {formula.insumos?.length || 0} itens
+                            </span>
+                          </td>
+
+                          {/* AÇÕES (EDITAR, DUPLICAR, EXCLUIR) */}
+                          <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end space-x-1.5">
+                              
+                              {/* BOTÃO DUPLICAR */}
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicarFormula(formula)}
+                                className="p-1.5 text-slate-400 hover:text-purple-300 hover:bg-purple-500/10 rounded-lg transition-colors"
+                                title="Criar variação de P&D (Cópia)"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* BOTÃO EDITAR */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormulaEmEdicao(formula);
+                                  setModalAberto(true);
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors"
+                                title="Editar Fórmula"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* BOTÃO EXCLUIR */}
+                              <button
+                                type="button"
+                                onClick={() => setIdParaExcluir(formula.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                                title="Excluir Fórmula"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
 
                             </div>
                           </td>
+
                         </tr>
-                      )}
 
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
+                        {/* LINHA FILHA (ACCORDION EXPANDIDO) */}
+                        {isExpandida && (
+                          <tr className="bg-slate-950/70 border-b border-slate-800">
+                            <td colSpan={8} className="p-4 sm:p-6">
+                              <div className="space-y-4 rounded-xl bg-slate-900/90 border border-slate-800 p-4 sm:p-5">
+                                
+                                {/* CABEÇALHO DO ACCORDION COM METODOLOGIA E DETALHES */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                      <Beaker className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300 font-mono">
+                                        Detalhamento Químico & Insumos — {formula.produto}
+                                      </h4>
+                                      <p className="text-[11px] text-slate-400">
+                                        Rendimento da receita: {formula.rendimento} {formula.unidadeRendimento} 
+                                        {formula.isCriacaoLivre && ` • Normalizado para base de 1.000 Litros`}
+                                      </p>
+                                    </div>
+                                  </div>
 
-            </table>
-          </div>
+                                  <div className="flex items-center gap-3 self-end sm:self-auto">
+                                    <div className="text-right">
+                                      <span className="text-[10px] text-slate-400 block font-mono">
+                                        Custo Normalizado:
+                                      </span>
+                                      <span className="text-xs font-mono font-bold text-emerald-300">
+                                        {formatarValorUnitarioLitro(formula.custoUnitarioLitro)} / Litro
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* TABELA FILHA DE INSUMOS */}
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                      <tr className="border-b border-slate-800 bg-slate-950/60 text-[10px] font-bold text-slate-400 uppercase font-mono">
+                                        <th className="py-2.5 px-3 text-center w-12">Seq</th>
+                                        <th className="py-2.5 px-3">Insumo (Matéria-Prima)</th>
+                                        <th className="py-2.5 px-3 text-center">UNI</th>
+                                        <th className="py-2.5 px-3 text-right">R$ Unitário</th>
+                                        <th className="py-2.5 px-3 text-right">Base Fórmula (Qtd)</th>
+                                        <th className="py-2.5 px-3">Metodologia / Instrução de Adição</th>
+                                        <th className="py-2.5 px-3 text-right">Custo Total</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/40 font-medium">
+                                      {formula.insumos && formula.insumos.length > 0 ? (
+                                        formula.insumos.map((item, idx) => (
+                                          <tr key={idx} className="hover:bg-slate-800/30">
+                                            
+                                            {/* SEQ */}
+                                            <td className="py-2.5 px-3 text-center font-mono font-bold text-amber-300/80">
+                                              {item.seq || idx + 1}
+                                            </td>
+
+                                            {/* NOME DO INSUMO */}
+                                            <td className="py-2.5 px-3 font-semibold text-slate-200">
+                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span>{item.insumo}</span>
+                                                {formulas.some(f => f.status === 'Uso interno' && f.produto.trim().toLowerCase() === item.insumo.trim().toLowerCase()) && (
+                                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-500/30 px-1.5 py-0.5 rounded">
+                                                    <Factory className="w-2.5 h-2.5 text-cyan-400" /> Base Interna (P&D)
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
+
+                                            {/* UNI */}
+                                            <td className="py-2.5 px-3 text-center">
+                                              <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] font-mono text-slate-300">
+                                                {item.uni || 'L'}
+                                              </span>
+                                            </td>
+
+                                            {/* R$ UNI */}
+                                            <td className="py-2.5 px-3 text-right font-mono text-slate-400">
+                                              {formatarMoeda(item.precoUni)}
+                                            </td>
+
+                                            {/* BASE FÓRMULA (QTD) */}
+                                            <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-200">
+                                              {item.baseFormula} {item.uni || 'L'}
+                                            </td>
+
+                                            {/* METODOLOGIA */}
+                                            <td className="py-2.5 px-3 text-slate-300">
+                                              {item.metodologia ? (
+                                                <span className="italic text-slate-300">
+                                                  {item.metodologia}
+                                                </span>
+                                              ) : (
+                                                <span className="text-slate-600 text-[11px]">
+                                                  (Adição direta padrão)
+                                                </span>
+                                              )}
+                                            </td>
+
+                                            {/* CUSTO TOTAL */}
+                                            <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-300">
+                                              {formatarMoeda(item.custoTotal)}
+                                            </td>
+
+                                          </tr>
+                                        ))
+                                      ) : (
+                                        <tr>
+                                          <td colSpan={7} className="py-4 text-center text-slate-500">
+                                            Nenhum insumo especificado nesta fórmula.
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+
+                                {/* OBSERVAÇÕES GERAIS (OBS) */}
+                                {formula.obs && (
+                                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono flex items-center gap-1.5">
+                                      <Info className="w-3.5 h-3.5 text-amber-400" />
+                                      <span>Observações Gerais & Processo de Envase:</span>
+                                    </span>
+                                    <p className="text-xs text-slate-300 whitespace-pre-wrap">
+                                      {formula.obs}
+                                    </p>
+                                  </div>
+                                )}
+
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+
+              </table>
+            </div>
+          </>
         )}
 
       </div>
