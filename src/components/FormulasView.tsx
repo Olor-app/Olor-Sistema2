@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Formula, ListasSelects, User, ProdutoStatus } from '../types';
 import { getFormulasApi, salvarFormulaApi, excluirFormulaApi } from '../services/api';
 import { FormulaModal } from './FormulaModal';
+import { FabricacaoModal } from './FabricacaoModal';
 import { formatarMoeda } from '../utils/calculations';
 import { formatarValorUnitarioLitro } from '../utils/formulaCalculations';
 import { 
@@ -21,11 +22,12 @@ import {
   CheckCircle2, 
   Clock, 
   AlertCircle, 
-  Sparkles,
-  Info,
-  SlidersHorizontal,
-  Copy,
-  Factory
+  Sparkles, 
+  Info, 
+  SlidersHorizontal, 
+  Copy, 
+  Factory,
+  Play
 } from 'lucide-react';
 
 interface FormulasViewProps {
@@ -52,12 +54,22 @@ export const FormulasView: React.FC<FormulasViewProps> = ({
   const [modalAberto, setModalAberto] = useState<boolean>(false);
   const [formulaEmEdicao, setFormulaEmEdicao] = useState<Formula | null>(null);
 
+  // Modal de Ordem de Fabricação / Bancada
+  const [modalFabricacaoAberto, setModalFabricacaoAberto] = useState<boolean>(false);
+  const [formulaParaFabricar, setFormulaParaFabricar] = useState<Formula | null>(null);
+
   // Modal de Confirmação de Exclusão
   const [idParaExcluir, setIdParaExcluir] = useState<string | null>(null);
   const [excluindo, setExcluindo] = useState<boolean>(false);
 
   // Feedback Toast
   const [toast, setToast] = useState<{ tipo: 'sucesso' | 'erro' | 'info'; mensagem: string } | null>(null);
+
+  // Abre o modal de fabricação com ou sem fórmula pré-selecionada
+  const handleAbrirFabricacao = (formula?: Formula | null) => {
+    setFormulaParaFabricar(formula || null);
+    setModalFabricacaoAberto(true);
+  };
 
   // Dispara Toast temporário
   const showToast = (mensagem: string, tipo: 'sucesso' | 'erro' | 'info' = 'sucesso') => {
@@ -365,6 +377,17 @@ export const FormulasView: React.FC<FormulasViewProps> = ({
             <RefreshCw className={`w-4 h-4 ${carregando ? 'animate-spin text-amber-400' : ''}`} />
           </button>
 
+          {/* BOTÃO FABRICAR (ORDEM DE PRODUÇÃO) */}
+          <button
+            type="button"
+            onClick={() => handleAbrirFabricacao(null)}
+            className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 active:scale-95 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-1.5"
+            title="Abrir Calculadora de Fabricação & Guia de Processo"
+          >
+            <Factory className="w-4 h-4" />
+            <span>Fabricar</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -498,6 +521,15 @@ export const FormulasView: React.FC<FormulasViewProps> = ({
                       >
                         {isExpandida ? <ChevronDown className="w-4 h-4 text-amber-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                         <span>{isExpandida ? 'Ocultar Insumos' : `Ver Insumos (${formula.insumos?.length || 0})`}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAbrirFabricacao(formula)}
+                        className="p-2.5 bg-slate-950 hover:bg-emerald-500/20 active:scale-95 text-emerald-400 border border-slate-800 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center transition-all"
+                        title="Fabricar esta Fórmula (Guia de Bancada)"
+                      >
+                        <Factory className="w-4 h-4" />
                       </button>
 
                       <button
@@ -724,10 +756,20 @@ export const FormulasView: React.FC<FormulasViewProps> = ({
                             </span>
                           </td>
 
-                          {/* AÇÕES (EDITAR, DUPLICAR, EXCLUIR) */}
+                          {/* AÇÕES (FABRICAR, DUPLICAR, EDITAR, EXCLUIR) */}
                           <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end space-x-1.5">
                               
+                              {/* BOTÃO FABRICAR */}
+                              <button
+                                type="button"
+                                onClick={() => handleAbrirFabricacao(formula)}
+                                className="p-1.5 text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                                title="Fabricar Lote desta Fórmula (Guia de Bancada)"
+                              >
+                                <Factory className="w-3.5 h-3.5" />
+                              </button>
+
                               {/* BOTÃO DUPLICAR */}
                               <button
                                 type="button"
@@ -927,6 +969,19 @@ export const FormulasView: React.FC<FormulasViewProps> = ({
           listas={listas}
           formulasExistentes={formulas}
           onSalvar={handleSalvarFormula}
+        />
+      )}
+
+      {/* MODAL DE ORDEM DE FABRICAÇÃO & GUIA DE PROCESSO */}
+      {modalFabricacaoAberto && (
+        <FabricacaoModal
+          isOpen={modalFabricacaoAberto}
+          onClose={() => {
+            setModalFabricacaoAberto(false);
+            setFormulaParaFabricar(null);
+          }}
+          formulas={formulas}
+          formulaInicial={formulaParaFabricar}
         />
       )}
 
