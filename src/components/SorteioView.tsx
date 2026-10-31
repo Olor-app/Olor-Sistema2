@@ -686,7 +686,7 @@ function gerarHtmlCupomSorteio(
       </div>
       <div class="body-content">
         <div class="coupons-section">
-          <p class="coupons-label">Número(s) do(s) cupom(s):</p>
+          <p class="coupons-label">${totalCupons <= 1 ? 'NÚMERO DO CUPOM:' : 'NÚMEROS DOS CUPONS:'}</p>
           <div class="coupons-grid" id="coupons-grid-row">
             ${cuponsHtml}
           </div>
@@ -1110,15 +1110,15 @@ export async function gerarCanvasCertificadoSorteio(
   ctx.stroke();
   ctx.restore();
 
+  // Badges dos cupons em linha única com autoajuste idêntico ao HTML
+  const cupons = cliente.numerosCupons || [];
+  const count = cupons.length || 1;
+
   ctx.fillStyle = '#92400E';
   ctx.font = `800 12px ${fontSans}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('NÚMERO(S) DO(S) CUPOM(S):', W / 2, curY + 19);
-
-  // Badges dos cupons em linha única com autoajuste idêntico ao HTML
-  const cupons = cliente.numerosCupons || [];
-  const count = cupons.length || 1;
+  ctx.fillText(count <= 1 ? 'NÚMERO DO CUPOM:' : 'NÚMEROS DOS CUPONS:', W / 2, curY + 19);
   let bFont = count <= 1 ? 28 : count === 2 ? 23 : count === 3 ? 20 : count === 4 ? 17 : count === 5 ? 15 : count <= 8 ? 13 : 11;
   let bPadX = count <= 1 ? 20 : count === 2 ? 16 : count === 3 ? 13 : count === 4 ? 11 : count === 5 ? 10 : 7;
   let bHeight = count <= 1 ? 40 : count === 2 ? 36 : count <= 4 ? 33 : 30;
@@ -1726,13 +1726,16 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
       const nomeArquivo = `NOVEMBRO_PREMIADO_OLOR_LUZ_-_${nomeClienteFormatado}.pdf`;
       const pdfFile = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
       const cuponsLista = (cliente.numerosCupons || []).map((n) => `#${n}`).join(', ');
+      const qtd = (cliente.numerosCupons || []).length || 1;
+      const trechoCupons = qtd <= 1 ? `com o seu cupom (${cuponsLista})` : `com os seus cupons (${cuponsLista})`;
+      const msg = `Olá, ${cliente.nomeCliente}! Segue em anexo o arquivo PDF oficial ${trechoCupons} do sorteio Novembro Premiado Olor Luz!\nBoa Sorte!`;
 
       const nav = navigator as any;
       if (nav.share && (!nav.canShare || nav.canShare({ files: [pdfFile] }))) {
         await nav.share({
           files: [pdfFile],
           title: `Cupom Oficial Olor Luz - ${cliente.nomeCliente}`,
-          text: `Olá, ${cliente.nomeCliente}! Segue o arquivo PDF oficial com o(s) seu(s) cupom(ns) (${cuponsLista}) do sorteio Novembro Premiado Olor Luz.`
+          text: msg
         });
         return;
       }
@@ -1762,7 +1765,9 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     const digitos = cliente.telefone.replace(/\D/g, '');
     const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
     const cuponsLista = (cliente.numerosCupons || []).map((n) => `#${n}`).join(', ');
-    const msg = `Olá, *${cliente.nomeCliente}*! Segue em anexo o arquivo PDF oficial com o(s) seu(s) cupom(ns) (${cuponsLista}) do sorteio *Novembro Premiado Olor Luz*!`;
+    const qtd = (cliente.numerosCupons || []).length || 1;
+    const trechoCupons = qtd <= 1 ? `com o seu cupom (${cuponsLista})` : `com os seus cupons (${cuponsLista})`;
+    const msg = `Olá, ${cliente.nomeCliente}! Segue em anexo o arquivo PDF oficial ${trechoCupons} do sorteio Novembro Premiado Olor Luz!\nBoa Sorte!`;
     const waUrl = `https://api.whatsapp.com/send?phone=${ddiTelefone}&text=${encodeURIComponent(msg)}`;
 
     try {
@@ -2755,7 +2760,9 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                       margin: '0 0 12px 0'
                     }}
                   >
-                    Número(s) do(s) cupom(s):
+                    {((clientePdfModal.numerosCupons || []).length || 1) <= 1
+                      ? 'NÚMERO DO CUPOM:'
+                      : 'NÚMEROS DOS CUPONS:'}
                   </p>
 
                   {(() => {
