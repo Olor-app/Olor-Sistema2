@@ -1,4 +1,4 @@
-import { ApiResponse, ListasSelects, User, Venda, TipoSaida, MateriaPrima, ProdutoItem, ProdutoStatus, Formula, InsumoFormula } from '../types';
+import { ApiResponse, ListasSelects, User, Venda, TipoSaida, MateriaPrima, ProdutoItem, ProdutoStatus, Formula, InsumoFormula, SorteioCliente } from '../types';
 import { normalizarFormulaCompleta } from '../utils/formulaCalculations';
 import { auth, db } from '../lib/firebase';
 import { 
@@ -1435,4 +1435,239 @@ export async function excluirFormulaApi(formulaId: string): Promise<{ success: b
     };
   }
 }
+
+// --- MÓDULO DE SORTEIO: NOVEMBRO PREMIADO OLOR LUZ ---
+
+export const STORAGE_KEY_SORTEIO = 'olorluz_sorteio_clientes';
+export const CUPOM_INICIAL_SORTEIO = 100;
+
+export function calcularProximoNumeroCupom(clientes: SorteioCliente[]): number {
+  if (!clientes || clientes.length === 0) {
+    return CUPOM_INICIAL_SORTEIO;
+  }
+  let maiorCupom = CUPOM_INICIAL_SORTEIO - 1;
+  clientes.forEach(c => {
+    if (Array.isArray(c.numerosCupons)) {
+      c.numerosCupons.forEach(num => {
+        const n = Number(num);
+        if (!isNaN(n) && n > maiorCupom) {
+          maiorCupom = n;
+        }
+      });
+    }
+  });
+  return maiorCupom + 1;
+}
+
+export function gerarFaixaCuponsSequenciais(inicio: number, quantidade: number): number[] {
+  const qtd = Math.max(1, Math.min(500, Math.floor(Number(quantidade) || 1)));
+  const lista: number[] = [];
+  for (let i = 0; i < qtd; i++) {
+    lista.push(inicio + i);
+  }
+  return lista;
+}
+
+export function getLocalSorteioClientes(): SorteioCliente[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SORTEIO);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Erro ao ler clientes do sorteio no localStorage:', e);
+  }
+  return [];
+}
+
+export function saveLocalSorteioClientes(clientes: SorteioCliente[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_SORTEIO, JSON.stringify(clientes));
+  } catch (e) {
+    console.error('Erro ao salvar clientes do sorteio no localStorage:', e);
+  }
+}
+
+export async function getSorteioClientesApi(): Promise<SorteioCliente[]> {
+  try {
+    const colRef = collection(db, 'sorteio_clientes');
+    const snap = await getDocs(colRef);
+    const result: SorteioCliente[] = [];
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      result.push({
+        id: docSnap.id,
+        nomeCliente: data.nomeCliente || '',
+        telefone: data.telefone || '',
+        quantidadeCupons: Number(data.quantidadeCupons) || 1,
+        numerosCupons: Array.isArray(data.numerosCupons)
+          ? data.numerosCupons.map((n: any) => Number(n)).filter((n: number) => !isNaN(n))
+          : [],
+        dataCadastro: data.dataCadastro || new Date().toISOString().split('T')[0],
+        obs: data.obs || '',
+        createdAt: data.createdAt || '',
+        updatedAt: data.updatedAt || ''
+      });
+    });
+
+    if (result.length === 0) {
+      const local = getLocalSorteioClientes();
+      if (local.length > 0) return local;
+      return [];
+    }
+
+    // Ordena pelo primeiro número de cupom crescente
+    result.sort((a, b) => {
+      const minA = a.numerosCupons?.[0] ?? 999999;
+      const minB = b.numerosCupons?.[0] ?? 999999;
+      return minA - minB;
+    });
+
+    saveLocalSorteioClientes(result);
+    return result;
+  } catch (err) {
+    console.error('Erro ao buscar clientes do sorteio no Firestore:', err);
+    return getLocalSorteioClientes();
+  }
+}
+
+export async function salvarSorteioClienteApi(
+  dados: {
+    id?: string;
+    nomeCliente: string;
+    telefone: string;
+    quantidadeCupons: number;
+    obs?: string;
+  },
+  clientesAtuais: SorteioCliente[]
+): Promise<{
+  success: boolean;
+  message: string;
+  clienteSalvo: SorteioCliente;
+  listaAtualizada: SorteioCliente[];
+}> {
+  const agoraIso = new Date().toISOString();
+  const dataHoje = agoraIso.split('T')[0];
+  const qtdValidada = Math.max(1, Math.min(500, Math.floor(Number(dados.quantidadeCupons) || 1)));
+
+  let lista = [...clientesAtuais];
+  const idxExistente = dados.id ? lista.findIndex(c => c.id === dados.id) : -1;
+
+  let numerosCuponsFinais: number[] = [];
+
+  if (idxExistente >= 0) {
+    // Editando cliente existente: preserva os cupons atuais e adiciona/remove se a quantidade mudou
+    const clienteAntigo = lista[idxExistente];
+    const cuponsAtuais = Array.isArray(clienteAntigo.numerosCupons) ? [...clienteAntigo.numerosCupons] : [];
+
+    if (qtdValidada === cuponsAtuais.length) {
+      numerosCuponsFinais = cuponsAtuais;
+    } else if (qtdValidada < cuponsAtuais.length) {
+      numerosCuponsFinais = cuponsAtuais.slice(0, qtdValidada);
+    } else {
+      const faltam = qtdValidada - cuponsAtuais.length;
+      const proximoGlobal = calcularProximoNumeroCupom(lista);
+      const novosCupons = gerarFaixaCuponsSequenciais(proximoGlobal, faltam);
+      numerosCuponsFinais = [...cuponsAtuais, ...novosCupons];
+    }
+  } else {
+    // Novo cadastro: gera sequencialmente a partir de 100 (ou do próximo disponível)
+    const proximoGlobal = calcularProximoNumeroCupom(lista);
+    numerosCuponsFinais = gerarFaixaCuponsSequenciais(proximoGlobal, qtdValidada);
+  }
+
+  const tempId = dados.id || `SOR-${Date.now()}`;
+  const clienteSalvo: SorteioCliente = {
+    id: tempId,
+    nomeCliente: dados.nomeCliente.trim(),
+    telefone: dados.telefone.trim(),
+    quantidadeCupons: qtdValidada,
+    numerosCupons: numerosCuponsFinais,
+    dataCadastro: idxExistente >= 0 ? lista[idxExistente].dataCadastro : dataHoje,
+    obs: (dados.obs || '').trim(),
+    createdAt: idxExistente >= 0 ? (lista[idxExistente].createdAt || agoraIso) : agoraIso,
+    updatedAt: agoraIso
+  };
+
+  if (idxExistente >= 0) {
+    lista[idxExistente] = clienteSalvo;
+  } else {
+    lista.push(clienteSalvo);
+  }
+
+  lista.sort((a, b) => (a.numerosCupons?.[0] ?? 999999) - (b.numerosCupons?.[0] ?? 999999));
+  saveLocalSorteioClientes(lista);
+
+  try {
+    const payload = {
+      nomeCliente: clienteSalvo.nomeCliente,
+      telefone: clienteSalvo.telefone,
+      quantidadeCupons: clienteSalvo.quantidadeCupons,
+      numerosCupons: clienteSalvo.numerosCupons,
+      dataCadastro: clienteSalvo.dataCadastro,
+      obs: clienteSalvo.obs || '',
+      createdAt: clienteSalvo.createdAt,
+      updatedAt: clienteSalvo.updatedAt
+    };
+
+    if (dados.id && !dados.id.startsWith('SOR-')) {
+      await updateDoc(doc(db, 'sorteio_clientes', dados.id), payload);
+    } else {
+      const docRef = await addDoc(collection(db, 'sorteio_clientes'), payload);
+      clienteSalvo.id = docRef.id;
+      lista = lista.map(c => (c.id === tempId ? clienteSalvo : c));
+      saveLocalSorteioClientes(lista);
+    }
+
+    return {
+      success: true,
+      message: `Cliente "${clienteSalvo.nomeCliente}" salvo com ${clienteSalvo.quantidadeCupons} cupom(ns) (#${clienteSalvo.numerosCupons.join(', #')})!`,
+      clienteSalvo,
+      listaAtualizada: lista
+    };
+  } catch (err) {
+    console.error('Erro ao salvar cliente do sorteio no Firestore:', err);
+    return {
+      success: true,
+      message: `Cliente "${clienteSalvo.nomeCliente}" salvo com ${clienteSalvo.quantidadeCupons} cupom(ns) (#${clienteSalvo.numerosCupons.join(', #')})!`,
+      clienteSalvo,
+      listaAtualizada: lista
+    };
+  }
+}
+
+export async function excluirSorteioClienteApi(
+  clienteId: string,
+  clientesAtuais: SorteioCliente[]
+): Promise<{
+  success: boolean;
+  message: string;
+  listaAtualizada: SorteioCliente[];
+}> {
+  const listaAtualizada = clientesAtuais.filter(c => c.id !== clienteId);
+  saveLocalSorteioClientes(listaAtualizada);
+
+  try {
+    if (!clienteId.startsWith('SOR-')) {
+      await deleteDoc(doc(db, 'sorteio_clientes', clienteId));
+    }
+    return {
+      success: true,
+      message: 'Participante excluído do sorteio com sucesso!',
+      listaAtualizada
+    };
+  } catch (err) {
+    console.error('Erro ao excluir cliente do sorteio no Firestore:', err);
+    return {
+      success: true,
+      message: 'Participante removido localmente.',
+      listaAtualizada
+    };
+  }
+}
+
 

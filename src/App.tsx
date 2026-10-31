@@ -10,6 +10,7 @@ import { ListasManagement } from './components/ListasManagement';
 import { UserManagement } from './components/UserManagement';
 import { ComissoesView } from './components/ComissoesView';
 import { FormulasView } from './components/FormulasView';
+import { SorteioView } from './components/SorteioView';
 import { LoginScreen } from './components/LoginScreen';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -135,9 +136,10 @@ export default function App() {
 
             <div className="text-center sm:text-left">
               <h1 className="font-cinzel text-base sm:text-xl lg:text-2xl font-bold text-amber-200 tracking-wider text-center sm:text-left">
-                {activeTab === 'dashboard' && 'Dashboard de Vendas'}
+                {activeTab === 'dashboard' && 'Dashboard'}
                 {activeTab === 'historico' && 'Histórico de Saídas (BD_Vendas)'}
                 {activeTab === 'comissoes' && 'Relatórios e Extratos de Comissões'}
+                {activeTab === 'sorteio' && 'Sorteio — Novembro Premiado Olor Luz'}
                 {activeTab === 'nova-venda' && 'Lançamento de Nova Saída / Pedido'}
                 {activeTab === 'tabela-precos' && 'Matriz de Produtos & Preços'}
                 {activeTab === 'formulas' && 'Engenharia de Produtos & Fórmulas (P&D)'}
@@ -208,6 +210,13 @@ export default function App() {
                 onRefresh={carregarDados}
                 loading={loading}
               />
+            </section>
+          )}
+
+          {/* 3.5. SORTEIO NOVEMBRO PREMIADO */}
+          {activeTab === 'sorteio' && (
+            <section className="space-y-6">
+              <SorteioView currentUser={currentUser} />
             </section>
           )}
 

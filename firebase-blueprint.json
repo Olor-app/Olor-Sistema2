@@ -55,6 +55,22 @@
         "obs": { "type": "string", "description": "Observações gerais da fórmula" }
       },
       "required": ["produto", "status", "insumos"]
+    },
+    "SorteioCliente": {
+      "title": "SorteioCliente",
+      "description": "Cliente participante do sorteio Novembro Premiado Olor Luz com cupons sequenciais a partir de 100",
+      "type": "object",
+      "properties": {
+        "nomeCliente": { "type": "string", "description": "Nome completo do cliente" },
+        "telefone": { "type": "string", "description": "Telefone com DDD" },
+        "quantidadeCupons": { "type": "number", "description": "Quantidade de cupons atribuídos ao cliente" },
+        "numerosCupons": { "type": "array", "description": "Lista de números de cupons sequenciais gerados a partir de 100" },
+        "dataCadastro": { "type": "string", "description": "Data do cadastro" },
+        "obs": { "type": "string", "description": "Observações opcionais" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["nomeCliente", "telefone", "quantidadeCupons", "numerosCupons"]
     }
   },
   "firestore": {
@@ -69,6 +85,11 @@
     "/formulas/{formulaId}": {
       "schema": "Formula",
       "description": "Coleção de fórmulas de produtos e fragrâncias da Olor Luz"
+    },
+    "/sorteio_clientes/{clienteId}": {
+      "schema": "SorteioCliente",
+      "description": "Coleção de clientes e cupons do Sorteio Novembro Premiado Olor Luz"
     }
   }
 }
+

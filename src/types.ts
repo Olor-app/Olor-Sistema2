@@ -116,3 +116,16 @@ export interface CalculationResult {
   comissao: number;
   regraAplicada: string;
 }
+
+export interface SorteioCliente {
+  id: string;
+  nomeCliente: string;
+  telefone: string;
+  quantidadeCupons: number;
+  numerosCupons: number[];
+  dataCadastro: string;
+  obs?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+

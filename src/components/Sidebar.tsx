@@ -21,10 +21,11 @@ import {
   ShieldCheck,
   UserCheck,
   ListChecks,
-  FlaskConical
+  FlaskConical,
+  Ticket
 } from 'lucide-react';
 
-export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'comissoes' | 'tabela-precos' | 'formulas' | 'listas' | 'gestao-usuarios';
+export type TabType = 'dashboard' | 'historico' | 'nova-venda' | 'comissoes' | 'sorteio' | 'tabela-precos' | 'formulas' | 'listas' | 'gestao-usuarios';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -82,6 +83,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: DollarSign,
       badge: 'Extrato',
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+      allowedRoles: ['Master', 'Vendedor']
+    },
+    {
+      id: 'sorteio' as TabType,
+      label: 'Sorteio',
+      description: 'Novembro Premiado & Cupons',
+      icon: Ticket,
+      badge: 'Cupons',
+      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
       allowedRoles: ['Master', 'Vendedor']
     },
     {
