@@ -224,7 +224,7 @@ export function getCouponBadgeStyles(count: number) {
   };
 }
 
-// Gera o documento HTML do Cupom/Certificado do Sorteio com autoajuste dinâmico do tamanho da página ao conteúdo (1 única página, zero margem em branco excessiva)
+// Gera o documento HTML do Cupom/Certificado do Sorteio com layout travado em proporção desktop/A4 tanto no PC quanto no Celular (1 única página, sem cortes e sem desconfigurar no mobile)
 function gerarHtmlCupomSorteio(
   cliente: SorteioCliente,
   logoUrl: string,
@@ -259,7 +259,7 @@ function gerarHtmlCupomSorteio(
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=840, user-scalable=yes" />
   <title>NOVEMBRO PREMIADO OLOR LUZ - ${cliente.nomeCliente}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -277,6 +277,7 @@ function gerarHtmlCupomSorteio(
     html, body {
       margin: 0;
       padding: 0;
+      min-width: 794px;
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       background-color: ${modoNovaAba ? '#0F172A' : '#FFFFFF'};
       color: #0F172A;
@@ -294,6 +295,7 @@ function gerarHtmlCupomSorteio(
       position: sticky;
       top: 0;
       z-index: 100;
+      min-width: 794px;
     }
     .top-bar-brand {
       display: flex;
@@ -319,12 +321,14 @@ function gerarHtmlCupomSorteio(
       font-size: 12.5px;
       cursor: pointer;
       box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+      white-space: nowrap;
     }
     .page-wrap {
       display: flex;
       justify-content: center;
       align-items: flex-start;
       padding: 18px 14px 28px;
+      min-width: 794px;
     }
     `
         : `
@@ -333,12 +337,15 @@ function gerarHtmlCupomSorteio(
       justify-content: center;
       align-items: flex-start;
       padding: 0;
+      min-width: 794px;
     }
     `
     }
     .sheet {
-      width: 210mm;
-      max-width: 210mm;
+      width: 794px;
+      min-width: 794px;
+      max-width: 794px;
+      flex-shrink: 0;
       height: auto;
       background: #FFFFFF;
       border-radius: 14px;
@@ -385,6 +392,8 @@ function gerarHtmlCupomSorteio(
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 12px;
+      white-space: nowrap;
       font-size: 12px;
       color: #78350F;
     }
@@ -445,12 +454,13 @@ function gerarHtmlCupomSorteio(
     }
     .kit-grid {
       display: grid;
-      grid-template-columns: 1fr 248px;
+      grid-template-columns: 1.92fr 1fr;
       gap: 12px;
       align-items: stretch;
       margin-bottom: 11px;
     }
     .prizes-box {
+      min-width: 0;
       background-color: #F8FAFC;
       border: 1px solid #E2E8F0;
       border-radius: 12px;
@@ -502,7 +512,8 @@ function gerarHtmlCupomSorteio(
       flex-shrink: 0;
     }
     .image-box {
-      width: 248px;
+      width: 100%;
+      min-width: 0;
       border-radius: 12px;
       overflow: hidden;
       border: 1.5px solid #F59E0B;
@@ -601,7 +612,9 @@ function gerarHtmlCupomSorteio(
     }
     @media print {
       html, body {
-        width: 210mm !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
         height: auto !important;
         overflow: hidden !important;
         background: #FFFFFF !important;
@@ -612,15 +625,18 @@ function gerarHtmlCupomSorteio(
       .page-wrap {
         padding: 0 !important;
         margin: 0 !important;
-        width: 210mm !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
         height: auto !important;
         display: block !important;
         overflow: hidden !important;
       }
       .sheet {
         box-shadow: none !important;
-        width: 210mm !important;
-        max-width: 210mm !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
         height: auto !important;
         margin: 0 !important;
         border: 2px solid #D97706 !important;
@@ -704,6 +720,9 @@ function gerarHtmlCupomSorteio(
   <script>
     function ajustarDocumentoAoConteudo() {
       try {
+        var sheet = document.getElementById('sorteio-folha-pdf');
+        if (!sheet) return;
+
         // 1. Garante que a linha de cupons nunca quebre nem transborde, autoajustando se houver muitos cupons
         var grid = document.getElementById('coupons-grid-row');
         if (grid && grid.scrollWidth > grid.clientWidth) {
@@ -719,34 +738,38 @@ function gerarHtmlCupomSorteio(
           grid.style.gap = '3px';
         }
 
-        // 2. Mede a altura exata da folha (.sheet) e define @page com o tamanho exato do conteúdo sem margem branca
-        var sheet = document.getElementById('sorteio-folha-pdf');
+        // 2. Mede a altura exata da folha (.sheet) na largura oficial de 794px (210mm)
+        // Nunca usa uma largura reduzida de tela mobile para não espremer a folha no @media print
         var dynStyle = document.getElementById('dynamic-page-size');
-        if (sheet && dynStyle) {
-          var rect = sheet.getBoundingClientRect();
-          var wPx = Math.ceil(rect.width);
-          var hPx = Math.ceil(rect.height);
-          if (wPx > 0 && hPx > 0) {
-            var wMm = (wPx * 25.4 / 96).toFixed(2);
-            var hMm = ((hPx + 1) * 25.4 / 96).toFixed(2);
+        if (dynStyle) {
+          var hPx = Math.ceil(sheet.offsetHeight || sheet.getBoundingClientRect().height || 695);
+          if (hPx > 0) {
+            var hMm = ((hPx + 2) * 25.4 / 96).toFixed(2);
             dynStyle.textContent =
-              '@page { size: ' + wMm + 'mm ' + hMm + 'mm !important; margin: 0 !important; } ' +
+              '@page { size: 210mm ' + hMm + 'mm !important; margin: 0 !important; } ' +
               '@media print { ' +
               '  html, body, .page-wrap { ' +
-              '    width: ' + wMm + 'mm !important; ' +
-              '    height: ' + hMm + 'mm !important; ' +
+              '    width: 100% !important; ' +
+              '    min-width: 100% !important; ' +
+              '    max-width: 100% !important; ' +
+              '    height: auto !important; ' +
               '    max-height: ' + hMm + 'mm !important; ' +
               '    overflow: hidden !important; ' +
               '    margin: 0 !important; ' +
               '    padding: 0 !important; ' +
               '  } ' +
               '  .sheet { ' +
-              '    width: ' + wMm + 'mm !important; ' +
-              '    max-width: ' + wMm + 'mm !important; ' +
-              '    height: ' + hPx + 'px !important; ' +
+              '    width: 100% !important; ' +
+              '    min-width: 100% !important; ' +
+              '    max-width: 100% !important; ' +
+              '    height: auto !important; ' +
               '    max-height: ' + hMm + 'mm !important; ' +
               '    overflow: hidden !important; ' +
               '    margin: 0 !important; ' +
+              '    page-break-inside: avoid !important; ' +
+              '    break-inside: avoid !important; ' +
+              '    page-break-after: avoid !important; ' +
+              '    break-after: avoid !important; ' +
               '  } ' +
               '}';
           }
