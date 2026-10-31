@@ -1385,19 +1385,40 @@ export async function gerarBlobPdfSorteio(
 ): Promise<Blob> {
   const { canvas, widthPx, heightPx } = await gerarCanvasCertificadoSorteio(cliente, logoBase64, kitBase64);
 
-  // Converte para PDF de página única auto-dimensionada (210mm x altura exata proporcional)
-  const pageWidthMm = 210;
-  const pageHeightMm = Number(((heightPx * pageWidthMm) / widthPx).toFixed(2));
+  // Margem de segurança de 2.5mm ao redor do certificado para nunca cortar a borda ou o lado direito no celular
+  const marginMm = 2.5;
+  const contentWidthMm = 210;
+  const contentHeightMm = Number(((heightPx * contentWidthMm) / widthPx).toFixed(2));
+  const totalWidthMm = Number((contentWidthMm + marginMm * 2).toFixed(2));
+  const totalHeightMm = Number((contentHeightMm + marginMm * 2).toFixed(2));
 
+  // IMPORTANTE: O jsPDF troca [largura, altura] quando orientation='p' e largura > altura (210mm > 198mm),
+  // o que cortava ~12mm do lado direito do documento. Com orientação dinâmica ('l' se largura > altura),
+  // a largura total é preservada integralmente sem cortar nada na direita.
   const doc = new jsPDF({
-    orientation: 'p',
+    orientation: totalWidthMm > totalHeightMm ? 'l' : 'p',
     unit: 'mm',
-    format: [pageWidthMm, pageHeightMm],
+    format: [totalWidthMm, totalHeightMm],
     compress: true
   });
 
+  const actualPageW = doc.internal.pageSize.getWidth();
+  const actualPageH = doc.internal.pageSize.getHeight();
+
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, actualPageW, actualPageH, 'F');
+
   const imgData = canvas.toDataURL('image/jpeg', 0.96);
-  doc.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, pageHeightMm, undefined, 'FAST');
+  doc.addImage(
+    imgData,
+    'JPEG',
+    marginMm,
+    marginMm,
+    actualPageW - marginMm * 2,
+    actualPageH - marginMm * 2,
+    undefined,
+    'FAST'
+  );
 
   return doc.output('blob');
 }
@@ -3049,15 +3070,32 @@ export const PublicCupomView: React.FC<{ cliente: SorteioCliente }> = ({ cliente
       const dataUrl = canvas.toDataURL('image/jpeg', 0.96);
       setPreviewUrl(dataUrl);
 
-      const pageWidthMm = 210;
-      const pageHeightMm = Number(((heightPx * pageWidthMm) / widthPx).toFixed(2));
+      const marginMm = 2.5;
+      const contentWidthMm = 210;
+      const contentHeightMm = Number(((heightPx * contentWidthMm) / widthPx).toFixed(2));
+      const totalWidthMm = Number((contentWidthMm + marginMm * 2).toFixed(2));
+      const totalHeightMm = Number((contentHeightMm + marginMm * 2).toFixed(2));
+
       const doc = new jsPDF({
-        orientation: 'p',
+        orientation: totalWidthMm > totalHeightMm ? 'l' : 'p',
         unit: 'mm',
-        format: [pageWidthMm, pageHeightMm],
+        format: [totalWidthMm, totalHeightMm],
         compress: true
       });
-      doc.addImage(dataUrl, 'JPEG', 0, 0, pageWidthMm, pageHeightMm, undefined, 'FAST');
+      const actualPageW = doc.internal.pageSize.getWidth();
+      const actualPageH = doc.internal.pageSize.getHeight();
+      doc.setFillColor(255, 255, 255);
+      doc.rect(0, 0, actualPageW, actualPageH, 'F');
+      doc.addImage(
+        dataUrl,
+        'JPEG',
+        marginMm,
+        marginMm,
+        actualPageW - marginMm * 2,
+        actualPageH - marginMm * 2,
+        undefined,
+        'FAST'
+      );
       const pdfBlob = doc.output('blob');
 
       const blobUrl = URL.createObjectURL(pdfBlob);
