@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { jsPDF } from 'jspdf';
 import { SorteioCliente, User } from '../types';
 import {
   getSorteioClientesApi,
@@ -61,6 +62,45 @@ function formatarTelefoneDDD(valor: string): string {
   return `(${digitos.slice(0, 2)}) ${digitos.slice(2, 7)}-${digitos.slice(7, 11)}`;
 }
 
+// Mascara o telefone do participante sorteado para privacidade: ex (34) 9****-3233 ou (34) ****-3233
+export function mascararTelefonePrivacidade(telefone: string): string {
+  if (!telefone) return '';
+  const digitos = telefone.replace(/\D/g, '');
+  if (digitos.length === 11) {
+    const ddd = digitos.slice(0, 2);
+    const nono = digitos[2];
+    const ultimos4 = digitos.slice(7);
+    return `(${ddd}) ${nono}****-${ultimos4}`;
+  }
+  if (digitos.length === 10) {
+    const ddd = digitos.slice(0, 2);
+    const ultimos4 = digitos.slice(6);
+    return `(${ddd}) ****-${ultimos4}`;
+  }
+  if (digitos.length >= 8) {
+    const ddd = digitos.length > 9 ? digitos.slice(0, 2) : '';
+    const ultimos4 = digitos.slice(-4);
+    return ddd ? `(${ddd}) ****-${ultimos4}` : `****-${ultimos4}`;
+  }
+  return telefone;
+}
+
+// Mascara o nome do participante sorteado para privacidade: ex "Tatiane Soares" vira "Tatiane S"
+export function mascararNomeGanhador(nome: string): string {
+  if (!nome) return '';
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  if (partes.length <= 1) return partes[0] || nome;
+
+  const primeiroNome = partes[0];
+  const preposicoes = new Set(['de', 'da', 'do', 'dos', 'das', 'e']);
+  const sobrenomes = partes.slice(1).filter(s => !preposicoes.has(s.toLowerCase()));
+
+  const lista = sobrenomes.length > 0 ? sobrenomes : partes.slice(1);
+  const iniciais = lista.map(s => s[0].toUpperCase()).join(' ');
+
+  return `${primeiroNome} ${iniciais}`;
+}
+
 // Converte URL de imagem para DataURL Base64 para garantir renderização 100% nítida no html2pdf
 async function carregarImagemComoBase64(url: string): Promise<string> {
   try {
@@ -78,13 +118,122 @@ async function carregarImagemComoBase64(url: string): Promise<string> {
   }
 }
 
-// Gera o documento HTML do Cupom/Certificado do Sorteio 100% isolado de Tailwind e oklch
+// Carrega a foto do kit em proporção 1:1 (quadrada) perfeitamente centralizada (50% / 50%)
+// Como a foto original é 3114x3387 (quase quadrada, 0.92:1), o corte 1:1 remove apenas 4% da sobra de mesa no topo e 4% na base,
+// preservando 100% da caixa preta, fita superior, logotipo circular dourado Olor Luz e laço inferior sem nenhum corte!
+export async function carregarImagemKitCentralizada(url: string, targetAspect = 1.0): Promise<string> {
+  try {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject();
+      img.src = url;
+    });
+
+    const origW = img.naturalWidth || img.width;
+    const origH = img.naturalHeight || img.height;
+    if (!origW || !origH) return url;
+
+    const origAspect = origW / origH;
+    let sx = 0, sy = 0, sw = origW, sh = origH;
+
+    if (origAspect > targetAspect) {
+      sw = origH * targetAspect;
+      sx = (origW - sw) / 2;
+    } else {
+      sh = origW / targetAspect;
+      sy = (origH - sh) / 2;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 960;
+    canvas.height = Math.round(960 / targetAspect);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return url;
+
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.95);
+  } catch {
+    return carregarImagemComoBase64(url);
+  }
+}
+
+// Calcula dimensões e estilos dinâmicos dos cupons para caberem em uma única linha sem quebrar
+export function getCouponBadgeStyles(count: number) {
+  if (count <= 1) {
+    return {
+      fontSize: '32px',
+      hashSize: '18px',
+      padding: '7px 22px',
+      gap: '8px',
+      borderWidth: '2px'
+    };
+  }
+  if (count === 2) {
+    return {
+      fontSize: '24px',
+      hashSize: '15px',
+      padding: '5px 16px',
+      gap: '8px',
+      borderWidth: '2px'
+    };
+  }
+  if (count === 3) {
+    return {
+      fontSize: '20px',
+      hashSize: '13px',
+      padding: '4px 12px',
+      gap: '6px',
+      borderWidth: '1.5px'
+    };
+  }
+  if (count === 4) {
+    return {
+      fontSize: '17px',
+      hashSize: '11px',
+      padding: '4px 10px',
+      gap: '6px',
+      borderWidth: '1.5px'
+    };
+  }
+  if (count === 5) {
+    return {
+      fontSize: '14.5px',
+      hashSize: '10px',
+      padding: '3px 8px',
+      gap: '5px',
+      borderWidth: '1.5px'
+    };
+  }
+  if (count <= 8) {
+    return {
+      fontSize: '13px',
+      hashSize: '9px',
+      padding: '3px 6px',
+      gap: '4px',
+      borderWidth: '1px'
+    };
+  }
+  return {
+    fontSize: '11px',
+    hashSize: '8px',
+    padding: '2px 5px',
+    gap: '3px',
+    borderWidth: '1px'
+  };
+}
+
+// Gera o documento HTML do Cupom/Certificado do Sorteio com autoajuste dinâmico do tamanho da página ao conteúdo (1 única página, zero margem em branco excessiva)
 function gerarHtmlCupomSorteio(
   cliente: SorteioCliente,
   logoUrl: string,
   kitUrl: string,
   modoNovaAba: boolean
 ): string {
+  const totalCupons = (cliente.numerosCupons || []).length || 1;
+  const badgeStyle = getCouponBadgeStyles(totalCupons);
+
   const cuponsHtml = (cliente.numerosCupons || [])
     .map(
       (num) => `
@@ -117,15 +266,15 @@ function gerarHtmlCupomSorteio(
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     @page {
-      size: A4 portrait;
-      margin: 6mm;
+      size: 210mm 184mm;
+      margin: 0 !important;
     }
     * {
       box-sizing: border-box;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    body {
+    html, body {
       margin: 0;
       padding: 0;
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -138,7 +287,7 @@ function gerarHtmlCupomSorteio(
     .top-bar {
       background: #020617;
       border-bottom: 1px solid #1E293B;
-      padding: 12px 24px;
+      padding: 10px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -149,133 +298,157 @@ function gerarHtmlCupomSorteio(
     .top-bar-brand {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       color: #FDE68A;
       font-family: 'Cinzel', Georgia, serif;
       font-weight: 800;
-      font-size: 14px;
-      letter-spacing: 1.5px;
+      font-size: 13px;
+      letter-spacing: 1.2px;
     }
     .top-bar-brand img {
-      height: 34px;
+      height: 30px;
       width: auto;
     }
     .btn-print {
       background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
       color: #0F172A;
       border: none;
-      padding: 10px 22px;
-      border-radius: 10px;
+      padding: 8px 18px;
+      border-radius: 8px;
       font-weight: 800;
-      font-size: 13px;
+      font-size: 12.5px;
       cursor: pointer;
       box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
     }
     .page-wrap {
       display: flex;
       justify-content: center;
-      padding: 24px 16px 40px;
+      align-items: flex-start;
+      padding: 18px 14px 28px;
     }
     `
         : `
     .page-wrap {
       display: flex;
       justify-content: center;
+      align-items: flex-start;
       padding: 0;
     }
     `
     }
     .sheet {
-      width: 100%;
-      max-width: 780px;
+      width: 210mm;
+      max-width: 210mm;
+      height: auto;
       background: #FFFFFF;
-      border-radius: 16px;
+      border-radius: 14px;
       border: 2px solid #D97706;
       overflow: hidden;
-      box-shadow: ${modoNovaAba ? '0 20px 50px rgba(0,0,0,0.6)' : 'none'};
+      display: flex;
+      flex-direction: column;
+      box-shadow: ${modoNovaAba ? '0 16px 45px rgba(0,0,0,0.5)' : 'none'};
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      page-break-after: avoid !important;
+      break-after: avoid !important;
+      page-break-before: avoid !important;
+      break-before: avoid !important;
     }
     .header-banner {
       background: linear-gradient(135deg, #090D16 0%, #1E293B 55%, #0F172A 100%);
-      padding: 20px 28px 16px;
+      padding: 13px 20px 10px;
       text-align: center;
-      border-bottom: 4px solid #F59E0B;
+      border-bottom: 3px solid #F59E0B;
     }
     .logo-img {
-      height: 70px;
+      height: 50px;
       width: auto;
       object-fit: contain;
-      margin: 0 auto 8px;
+      margin: 0 auto 4px;
       display: block;
-      filter: drop-shadow(0 4px 12px rgba(245, 158, 11, 0.35));
+      filter: none !important;
     }
     .main-title {
       font-family: 'Cinzel', Georgia, serif;
-      font-size: 24px;
+      font-size: 21px;
       font-weight: 900;
       color: #FDE68A;
-      letter-spacing: 2px;
-      margin: 2px 0 0;
+      letter-spacing: 1.6px;
+      margin: 0;
       text-transform: uppercase;
+      line-height: 1.2;
     }
     .client-bar {
       background-color: #FFFBEB;
       border-bottom: 1px solid #FDE68A;
-      padding: 10px 24px;
+      padding: 7px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 12.5px;
+      font-size: 12px;
       color: #78350F;
     }
     .body-content {
-      padding: 18px 24px 20px;
+      display: flex;
+      flex-direction: column;
+      padding: 12px 18px 12px;
     }
     .coupons-section {
       background: linear-gradient(180deg, #FFFBEB 0%, #FEF3C7 100%);
-      border: 2px dashed #D97706;
-      border-radius: 14px;
-      padding: 14px 16px;
+      border: 1.5px dashed #D97706;
+      border-radius: 12px;
+      padding: 10px 14px;
       text-align: center;
-      margin-bottom: 18px;
+      margin-bottom: 11px;
+      box-shadow: none !important;
     }
     .coupons-label {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 1.2px;
+      letter-spacing: 1.1px;
       color: #92400E;
-      margin: 0 0 10px 0;
+      margin: 0 0 6px 0;
     }
     .coupons-grid {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap !important;
       justify-content: center;
-      gap: 10px;
+      align-items: center;
+      gap: ${badgeStyle.gap};
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+      white-space: nowrap !important;
     }
     .coupon-badge {
       background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
       color: #FBBF24;
-      border: 2px solid #F59E0B;
-      border-radius: 12px;
-      padding: 8px 22px;
-      font-size: 34px;
+      border: ${badgeStyle.borderWidth} solid #F59E0B;
+      border-radius: 8px;
+      padding: ${badgeStyle.padding};
+      font-size: ${badgeStyle.fontSize};
       font-weight: 900;
-      line-height: 1;
-      letter-spacing: 1px;
+      line-height: 1.1;
+      letter-spacing: 0.5px;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap !important;
+      flex-shrink: 1;
+      min-width: 0;
+      box-shadow: none !important;
     }
     .coupon-hash {
-      font-size: 20px;
+      font-size: ${badgeStyle.hashSize};
       color: #FDE68A;
       margin-right: 2px;
       font-weight: 700;
     }
     .kit-grid {
       display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
-      gap: 18px;
+      grid-template-columns: 1fr 248px;
+      gap: 12px;
       align-items: stretch;
-      margin-bottom: 16px;
+      margin-bottom: 11px;
     }
     .prizes-box {
       background-color: #F8FAFC;
@@ -284,25 +457,29 @@ function gerarHtmlCupomSorteio(
       padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: space-between;
     }
     .prizes-heading {
-      font-size: 14.5px;
+      font-size: 14px;
       font-weight: 800;
       color: #0F172A;
-      margin: 0 0 10px 0;
+      margin: 0 0 8px 0;
       line-height: 1.35;
     }
     .prizes-list {
       list-style: none;
       padding: 0;
       margin: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
+      flex: 1;
     }
     .prize-item {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 0;
+      padding: 5px 0;
       border-bottom: 1px solid #E2E8F0;
       font-size: 12.5px;
       font-weight: 700;
@@ -325,81 +502,97 @@ function gerarHtmlCupomSorteio(
       flex-shrink: 0;
     }
     .image-box {
+      width: 248px;
       border-radius: 12px;
       overflow: hidden;
-      border: 2px solid #F59E0B;
+      border: 1.5px solid #F59E0B;
       background-color: #0F172A;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      box-shadow: none !important;
     }
-    .image-box img {
+    .image-frame {
       width: 100%;
-      height: 240px;
-      object-fit: cover;
-      object-position: center 25%;
+      aspect-ratio: 1 / 1;
+      background-color: #C9B59C;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: none !important;
+    }
+    .image-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
       display: block;
+      box-shadow: none !important;
     }
     .image-caption {
       background-color: #0F172A;
       color: #FDE68A;
       text-align: center;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.8px;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.7px;
       text-transform: uppercase;
-      padding: 5px 8px;
+      padding: 6px 6px;
+      border-top: 1px solid rgba(245, 158, 11, 0.4);
     }
     .dates-grid {
       display: grid;
       grid-template-columns: 1fr 1.35fr;
-      gap: 12px;
-      margin-bottom: 14px;
+      gap: 10px;
+      margin-bottom: 10px;
       align-items: stretch;
     }
     .date-highlight {
       background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-      border: 2px solid #F59E0B;
+      border: 1.5px solid #F59E0B;
       border-radius: 10px;
-      padding: 10px 14px;
+      padding: 9px 12px;
       text-align: center;
       color: #FFFFFF;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
+      box-shadow: none !important;
     }
     .date-highlight-sorteio {
-      padding: 10px 14px;
+      padding: 9px 12px;
     }
     .date-highlight-title {
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 800;
       color: #FDE68A;
       margin: 0;
       line-height: 1.35;
     }
     .date-highlight-sorteio-text {
-      font-size: 11.5px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 600;
       color: #FFFFFF;
       margin: 0;
-      line-height: 1.45;
+      line-height: 1.4;
     }
     .obs-box {
       background-color: #FFFBEB;
       border: 1px solid #FCD34D;
       border-radius: 10px;
-      padding: 10px 14px;
-      font-size: 11.5px;
-      line-height: 1.45;
+      padding: 8px 12px;
+      font-size: 10.5px;
+      line-height: 1.4;
       color: #78350F;
       text-align: center;
       font-weight: 600;
+      margin-bottom: 8px;
+      box-shadow: none !important;
     }
     .doc-footer {
-      margin-top: 12px;
-      padding-top: 8px;
+      margin-top: 2px;
+      padding-top: 6px;
       border-top: 1px solid #E2E8F0;
       display: flex;
       justify-content: space-between;
@@ -407,12 +600,42 @@ function gerarHtmlCupomSorteio(
       color: #64748B;
     }
     @media print {
-      body { background: #FFFFFF; }
+      html, body {
+        width: 210mm !important;
+        height: auto !important;
+        overflow: hidden !important;
+        background: #FFFFFF !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
       .top-bar { display: none !important; }
-      .page-wrap { padding: 0; }
-      .sheet { box-shadow: none; max-width: 100%; border-width: 1px; }
+      .page-wrap {
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 210mm !important;
+        height: auto !important;
+        display: block !important;
+        overflow: hidden !important;
+      }
+      .sheet {
+        box-shadow: none !important;
+        width: 210mm !important;
+        max-width: 210mm !important;
+        height: auto !important;
+        margin: 0 !important;
+        border: 2px solid #D97706 !important;
+        border-radius: 10px !important;
+        overflow: hidden !important;
+        page-break-after: avoid !important;
+        page-break-before: avoid !important;
+        page-break-inside: avoid !important;
+        break-after: avoid !important;
+        break-before: avoid !important;
+        break-inside: avoid !important;
+      }
     }
   </style>
+  <style id="dynamic-page-size"></style>
 </head>
 <body>
   ${
@@ -423,7 +646,7 @@ function gerarHtmlCupomSorteio(
       <img src="${logoUrl}" alt="Olor Luz" referrerpolicy="no-referrer" />
       <span>NOVEMBRO PREMIADO OLOR LUZ — COMPROVANTE DE CUPONS</span>
     </div>
-    <button class="btn-print" onclick="window.print()">🖨️ Baixar PDF / Imprimir Agora</button>
+    <button class="btn-print" onclick="acionarImpressaoAjustada()">🖨️ Baixar PDF / Imprimir Agora</button>
   </div>
   `
       : ''
@@ -442,7 +665,7 @@ function gerarHtmlCupomSorteio(
       <div class="body-content">
         <div class="coupons-section">
           <p class="coupons-label">Número(s) do(s) cupom(s):</p>
-          <div class="coupons-grid">
+          <div class="coupons-grid" id="coupons-grid-row">
             ${cuponsHtml}
           </div>
         </div>
@@ -454,7 +677,9 @@ function gerarHtmlCupomSorteio(
             </ul>
           </div>
           <div class="image-box">
-            <img src="${kitUrl}" alt="Superkit Olor Luz" referrerpolicy="no-referrer" />
+            <div class="image-frame">
+              <img id="kit-img-el" src="${kitUrl}" alt="Superkit Olor Luz" referrerpolicy="no-referrer" />
+            </div>
             <div class="image-caption">Superkit Oficial • 5 Itens Exclusivos Olor Luz</div>
           </div>
         </div>
@@ -463,7 +688,7 @@ function gerarHtmlCupomSorteio(
             <p class="date-highlight-title">📅 Participação: de 1º a 30 de novembro.</p>
           </div>
           <div class="date-highlight date-highlight-sorteio">
-            <p class="date-highlight-sorteio-text"><strong style="color: #FDE68A; font-size: 12.5px;">🎁 Sorteio: 1º de dezembro!</strong> O vídeo do sorteio, com a divulgação do ganhador, será publicado na página oficial da Olor Luz no Instagram: <strong style="color: #FDE68A;">@olorluz</strong>.</p>
+            <p class="date-highlight-sorteio-text"><strong style="color: #FDE68A; font-size: 12px;">🎁 Sorteio: 1º de dezembro!</strong> O vídeo do sorteio, com a divulgação do ganhador, será publicado na página oficial da Olor Luz no Instagram: <strong style="color: #FDE68A;">@olorluz</strong>.</p>
           </div>
         </div>
         <div class="obs-box">
@@ -476,23 +701,334 @@ function gerarHtmlCupomSorteio(
       </div>
     </div>
   </div>
-  ${
-    modoNovaAba
-      ? `
   <script>
+    function ajustarDocumentoAoConteudo() {
+      try {
+        // 1. Garante que a linha de cupons nunca quebre nem transborde, autoajustando se houver muitos cupons
+        var grid = document.getElementById('coupons-grid-row');
+        if (grid && grid.scrollWidth > grid.clientWidth) {
+          var ratio = grid.clientWidth / grid.scrollWidth;
+          var badges = grid.querySelectorAll('.coupon-badge');
+          for (var i = 0; i < badges.length; i++) {
+            var b = badges[i];
+            var curFs = parseFloat(window.getComputedStyle(b).fontSize) || 14;
+            var newFs = Math.max(7.5, curFs * ratio * 0.94);
+            b.style.fontSize = newFs.toFixed(1) + 'px';
+            b.style.padding = '2px ' + Math.max(3, Math.floor(6 * ratio)) + 'px';
+          }
+          grid.style.gap = '3px';
+        }
+
+        // 2. Mede a altura exata da folha (.sheet) e define @page com o tamanho exato do conteúdo sem margem branca
+        var sheet = document.getElementById('sorteio-folha-pdf');
+        var dynStyle = document.getElementById('dynamic-page-size');
+        if (sheet && dynStyle) {
+          var rect = sheet.getBoundingClientRect();
+          var wPx = Math.ceil(rect.width);
+          var hPx = Math.ceil(rect.height);
+          if (wPx > 0 && hPx > 0) {
+            var wMm = (wPx * 25.4 / 96).toFixed(2);
+            var hMm = ((hPx + 1) * 25.4 / 96).toFixed(2);
+            dynStyle.textContent =
+              '@page { size: ' + wMm + 'mm ' + hMm + 'mm !important; margin: 0 !important; } ' +
+              '@media print { ' +
+              '  html, body, .page-wrap { ' +
+              '    width: ' + wMm + 'mm !important; ' +
+              '    height: ' + hMm + 'mm !important; ' +
+              '    max-height: ' + hMm + 'mm !important; ' +
+              '    overflow: hidden !important; ' +
+              '    margin: 0 !important; ' +
+              '    padding: 0 !important; ' +
+              '  } ' +
+              '  .sheet { ' +
+              '    width: ' + wMm + 'mm !important; ' +
+              '    max-width: ' + wMm + 'mm !important; ' +
+              '    height: ' + hPx + 'px !important; ' +
+              '    max-height: ' + hMm + 'mm !important; ' +
+              '    overflow: hidden !important; ' +
+              '    margin: 0 !important; ' +
+              '  } ' +
+              '}';
+          }
+        }
+      } catch (err) {}
+    }
+
+    function acionarImpressaoAjustada() {
+      ajustarDocumentoAoConteudo();
+      window.print();
+    }
+
+    window.addEventListener('DOMContentLoaded', ajustarDocumentoAoConteudo);
+    window.addEventListener('resize', ajustarDocumentoAoConteudo);
+    window.addEventListener('beforeprint', ajustarDocumentoAoConteudo);
+
+    var kitImg = document.getElementById('kit-img-el');
+    if (kitImg) {
+      kitImg.addEventListener('load', ajustarDocumentoAoConteudo);
+    }
+
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(ajustarDocumentoAoConteudo);
+    }
+
+    ${
+      modoNovaAba
+        ? `
     window.addEventListener('load', function() {
+      ajustarDocumentoAoConteudo();
       setTimeout(function() {
+        ajustarDocumentoAoConteudo();
         try {
           window.print();
         } catch (e) {}
       }, 450);
     });
+    `
+        : ''
+    }
   </script>
-  `
-      : ''
-  }
 </body>
 </html>`;
+}
+
+// Gera o arquivo Blob PDF oficial vetorial de alta definição com página autoajustada ao conteúdo e foto 1:1 sem cortes
+export async function gerarBlobPdfSorteio(
+  cliente: SorteioCliente,
+  logoBase64: string,
+  kitBase64: string
+): Promise<Blob> {
+  const pageWidth = 210;
+  // Altura exatamente ajustada ao término do rodapé + margem mínima inferior (sem espaço em branco sobrando)
+  const pageHeight = 197;
+
+  const doc = new jsPDF({
+    orientation: 'p',
+    unit: 'mm',
+    format: [pageWidth, pageHeight],
+    compress: true
+  });
+
+  const marginX = 6;
+  const contentWidth = pageWidth - marginX * 2; // 198mm
+  const marginY = 5;
+  const contentHeight = pageHeight - marginY * 2; // 187mm
+
+  // Cabeçalho Escuro
+  doc.setFillColor(9, 13, 22);
+  doc.rect(marginX, marginY, contentWidth, 32, 'F');
+  doc.setFillColor(245, 158, 11);
+  doc.rect(marginX, marginY + 30.8, contentWidth, 1.2, 'F');
+
+  // Logotipo no Cabeçalho
+  let headerTextY = marginY + 24;
+  if (logoBase64 && logoBase64.startsWith('data:image')) {
+    try {
+      const format = logoBase64.includes('image/jpeg') ? 'JPEG' : 'PNG';
+      doc.addImage(logoBase64, format, pageWidth / 2 - 18, marginY + 2, 36, 15, undefined, 'FAST');
+      headerTextY = marginY + 27.5;
+    } catch {
+      headerTextY = marginY + 22;
+    }
+  }
+
+  // Título do Cabeçalho
+  doc.setTextColor(253, 230, 138);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13.5);
+  doc.text('NOVEMBRO PREMIADO OLOR LUZ', pageWidth / 2, headerTextY, { align: 'center' });
+
+  // Faixa de Informações do Cliente
+  const clientBarY = marginY + 32;
+  doc.setFillColor(255, 251, 235);
+  doc.rect(marginX, clientBarY, contentWidth, 9.5, 'F');
+  doc.setDrawColor(253, 230, 138);
+  doc.setLineWidth(0.3);
+  doc.line(marginX, clientBarY + 9.5, marginX + contentWidth, clientBarY + 9.5);
+
+  doc.setTextColor(120, 53, 15);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`CLIENTE: ${cliente.nomeCliente}`, marginX + 5, clientBarY + 6.3);
+  doc.text(`TELEFONE: ${cliente.telefone}`, marginX + 88, clientBarY + 6.3);
+  const totalCupons = cliente.numerosCupons?.length || cliente.quantidadeCupons || 1;
+  doc.text(`QTDE DE CUPONS: ${totalCupons}`, marginX + contentWidth - 5, clientBarY + 6.3, { align: 'right' });
+
+  // Caixa de Destaque dos Cupons
+  let curY = clientBarY + 12.5;
+  const couponsHeight = 23;
+  doc.setFillColor(254, 243, 199);
+  doc.roundedRect(marginX + 4, curY, contentWidth - 8, couponsHeight, 3, 3, 'F');
+  doc.setDrawColor(217, 119, 6);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(marginX + 4, curY, contentWidth - 8, couponsHeight, 3, 3, 'S');
+
+  doc.setTextColor(146, 64, 14);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('NÚMERO(S) DO(S) CUPOM(S):', pageWidth / 2, curY + 5.5, { align: 'center' });
+
+  // Cupons auto-ajustados em linha única
+  const cupons = cliente.numerosCupons || [];
+  const count = cupons.length || 1;
+  const availWidth = contentWidth - 16;
+  const gapMm = count > 8 ? 1.5 : 3;
+  const badgeWidth = Math.min(36, Math.max(8, (availWidth - (count - 1) * gapMm) / count));
+  const badgeHeight = 12;
+  const totalBadgesWidth = count * badgeWidth + (count - 1) * gapMm;
+  let startX = (pageWidth - totalBadgesWidth) / 2;
+  const badgeY = curY + 8;
+
+  const cupomFontSize = count <= 2 ? 14 : count <= 4 ? 11.5 : count <= 7 ? 9 : count <= 12 ? 7.5 : 6;
+
+  cupons.forEach((num) => {
+    doc.setFillColor(15, 23, 42);
+    doc.roundedRect(startX, badgeY, badgeWidth, badgeHeight, 2, 2, 'F');
+    doc.setDrawColor(245, 158, 11);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(startX, badgeY, badgeWidth, badgeHeight, 2, 2, 'S');
+
+    doc.setTextColor(251, 191, 36);
+    doc.setFontSize(cupomFontSize);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`#${num}`, startX + badgeWidth / 2, badgeY + badgeHeight / 2 + (cupomFontSize > 11 ? 1.8 : 1.3), {
+      align: 'center'
+    });
+
+    startX += badgeWidth + gapMm;
+  });
+
+  // Seção do Kit & Prêmios (Container da foto 1:1 quadrado sem cortes: 64x64mm + legenda 7mm = 71mm)
+  curY += couponsHeight + 3;
+  const kitBoxWidth = 65;
+  const prizesWidth = contentWidth - 8 - kitBoxWidth - 4;
+  const kitSectionHeight = 71;
+
+  // Lista dos Prêmios (Esquerda)
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(marginX + 4, curY, prizesWidth, kitSectionHeight, 3, 3, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(marginX + 4, curY, prizesWidth, kitSectionHeight, 3, 3, 'S');
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'bold');
+  const titleLines = doc.splitTextToSize('Preparamos um superkit com 5 itens especiais da Olor Luz!', prizesWidth - 10);
+  doc.text(titleLines, marginX + 8, curY + 7.5);
+
+  let prizeY = curY + 18.5;
+  LISTA_PREMIOS_SORTEIO.forEach((p) => {
+    doc.setFillColor(254, 243, 199);
+    doc.circle(marginX + 9.5, prizeY - 1, 2, 'F');
+    doc.setTextColor(180, 83, 9);
+    doc.setFontSize(6.5);
+    doc.text('✦', marginX + 9.5, prizeY - 0.2, { align: 'center' });
+
+    doc.setTextColor(30, 41, 59);
+    doc.setFontSize(8.2);
+    doc.setFont('helvetica', 'bold');
+    const pLines = doc.splitTextToSize(p, prizesWidth - 17);
+    doc.text(pLines, marginX + 14, prizeY);
+    prizeY += 10.5;
+  });
+
+  // Foto do Kit (Direita - Container 1:1 quadrado 64x64mm: 100% visível e centralizada sem cortes!)
+  const imgX = marginX + 4 + prizesWidth + 4;
+  doc.setFillColor(15, 23, 42);
+  doc.roundedRect(imgX, curY, kitBoxWidth, kitSectionHeight, 3, 3, 'F');
+  doc.setDrawColor(245, 158, 11);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(imgX, curY, kitBoxWidth, kitSectionHeight, 3, 3, 'S');
+
+  const imgSquareSize = 64;
+  if (kitBase64 && kitBase64.startsWith('data:image')) {
+    try {
+      const format = kitBase64.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(kitBase64, format, imgX + 0.5, curY + 0.5, imgSquareSize, imgSquareSize, undefined, 'FAST');
+    } catch {}
+  }
+  doc.setTextColor(253, 230, 138);
+  doc.setFontSize(6);
+  doc.setFont('helvetica', 'bold');
+  doc.text('SUPERKIT OFICIAL • 5 ITENS EXCLUSIVOS OLOR LUZ', imgX + kitBoxWidth / 2, curY + 68.5, { align: 'center' });
+
+  // Destaques de Datas (Participação e Sorteio lado a lado)
+  curY += kitSectionHeight + 3;
+  const dateBox1W = (contentWidth - 12) * 0.41;
+  const dateBox2W = contentWidth - 8 - dateBox1W - 4;
+  const datesHeight = 23;
+
+  // Box Participação
+  doc.setFillColor(15, 23, 42);
+  doc.roundedRect(marginX + 4, curY, dateBox1W, datesHeight, 3, 3, 'F');
+  doc.setDrawColor(245, 158, 11);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(marginX + 4, curY, dateBox1W, datesHeight, 3, 3, 'S');
+
+  doc.setTextColor(253, 230, 138);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('📅 Participação: de 1º a 30 de novembro.', marginX + 4 + dateBox1W / 2, curY + 12.5, { align: 'center' });
+
+  // Box Sorteio
+  const box2X = marginX + 4 + dateBox1W + 4;
+  doc.setFillColor(15, 23, 42);
+  doc.roundedRect(box2X, curY, dateBox2W, datesHeight, 3, 3, 'F');
+  doc.setDrawColor(245, 158, 11);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(box2X, curY, dateBox2W, datesHeight, 3, 3, 'S');
+
+  doc.setTextColor(253, 230, 138);
+  doc.setFontSize(8.3);
+  doc.setFont('helvetica', 'bold');
+  doc.text('🎁 Sorteio: 1º de dezembro!', box2X + 5, curY + 7);
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(7.2);
+  doc.setFont('helvetica', 'normal');
+  const sorteioDesc = doc.splitTextToSize(
+    'O vídeo do sorteio, com a divulgação do ganhador, será publicado na página oficial da Olor Luz no Instagram: @olorluz.',
+    dateBox2W - 10
+  );
+  doc.text(sorteioDesc, box2X + 5, curY + 12.5);
+
+  // Observações
+  curY += datesHeight + 2.5;
+  const obsHeight = 13.5;
+  doc.setFillColor(255, 251, 235);
+  doc.roundedRect(marginX + 4, curY, contentWidth - 8, obsHeight, 2.5, 2.5, 'F');
+  doc.setDrawColor(252, 211, 77);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(marginX + 4, curY, contentWidth - 8, obsHeight, 2.5, 2.5, 'S');
+
+  doc.setTextColor(120, 53, 15);
+  doc.setFontSize(7.3);
+  doc.setFont('helvetica', 'normal');
+  const obsText = doc.splitTextToSize(
+    'As fragrâncias dos produtos poderão ser escolhidas pelo ganhador entre as opções disponíveis, com exceção do kit de mini sprays, que já possui fragrâncias definidas.',
+    contentWidth - 16
+  );
+  doc.text(obsText, pageWidth / 2, curY + 5.8, { align: 'center' });
+
+  // Rodapé
+  curY += obsHeight + 2.5;
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.line(marginX + 4, curY, marginX + contentWidth - 4, curY);
+
+  doc.setTextColor(100, 116, 139);
+  doc.setFontSize(7.2);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Olor Luz • Certificado Oficial de Participação', marginX + 4, curY + 4.5);
+  doc.text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, marginX + contentWidth - 4, curY + 4.5, { align: 'right' });
+
+  // Borda Externa Dourada - enquadramento exato ao redor do conteúdo (sem espaço vazio na base)
+  doc.setDrawColor(217, 119, 6);
+  doc.setLineWidth(0.8);
+  doc.roundedRect(marginX, marginY, contentWidth, contentHeight, 3.5, 3.5, 'S');
+
+  return doc.output('blob');
 }
 
 export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
@@ -500,6 +1036,7 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [salvando, setSalvando] = useState<boolean>(false);
   const [gerandoPdfId, setGerandoPdfId] = useState<string | null>(null);
+  const [enviandoWhatsAppId, setEnviandoWhatsAppId] = useState<string | null>(null);
 
   // Estado do formulário CRUD
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -543,9 +1080,9 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
 
   useEffect(() => {
     carregarClientes();
-    // Pré-carrega imagens em Base64 para exportação PDF de alta resolução
+    // Pré-carrega imagens em Base64 para exportação PDF de alta resolução com enquadramento 1:1 sem cortes
     carregarImagemComoBase64(OFFICIAL_LOGO_URL).then(setLogoBase64);
-    carregarImagemComoBase64(KIT_PREMIOS_IMAGE_URL).then(setKitBase64);
+    carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0).then(setKitBase64);
   }, []);
 
   // Próximo número de cupom global (iniciando em 100)
@@ -574,12 +1111,32 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     return gerarFaixaCuponsSequenciais(proximoNumeroGlobal, qtd);
   }, [quantidadeCupons, editingId, clientes, proximoNumeroGlobal]);
 
-  // Lista filtrada pela busca (nome, telefone ou número do cupom)
+  // Lista de participantes ordenada do lançamento mais recente para o menos e filtrada pela busca
   const clientesFiltrados = useMemo(() => {
+    // Ordena do lançamento mais recente para o menos
+    const ordenados = [...clientes].sort((a, b) => {
+      // 1. Data e hora de criação ISO (mais recente primeiro)
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeA !== timeB) return timeB - timeA;
+
+      // 2. Maior número de cupom (os cupons são sequenciais e incrementais)
+      const maxA = Math.max(...(a.numerosCupons || [0]), 0);
+      const maxB = Math.max(...(b.numerosCupons || [0]), 0);
+      if (maxA !== maxB) return maxB - maxA;
+
+      // 3. Data de cadastro (string YYYY-MM-DD)
+      const cadA = a.dataCadastro || '';
+      const cadB = b.dataCadastro || '';
+      if (cadA !== cadB) return cadB.localeCompare(cadA);
+
+      return (b.id || '').localeCompare(a.id || '');
+    });
+
     const termo = busca.trim().toLowerCase();
-    if (!termo) return clientes;
+    if (!termo) return ordenados;
     const termoApenasDigitos = termo.replace(/\D/g, '');
-    return clientes.filter(c => {
+    return ordenados.filter(c => {
       const matchNome = c.nomeCliente.toLowerCase().includes(termo);
       const matchTel = c.telefone.toLowerCase().includes(termo) || (termoApenasDigitos && c.telefone.replace(/\D/g, '').includes(termoApenasDigitos));
       const matchCupom = c.numerosCupons?.some(num => String(num).includes(termoApenasDigitos || termo));
@@ -671,7 +1228,7 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
 
       if (abrirPdfAposSalvar) {
         handleImprimirOuNovaAba(res.clienteSalvo, winPre);
-        setClientePdfModal(res.clienteSalvo);
+        // Mantém a tela original intacta sem abrir modal por cima
       }
     } catch (err: any) {
       if (winPre && !winPre.closed) {
@@ -710,7 +1267,10 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     }
 
     if (!win) {
-      setClientePdfModal(cliente);
+      setFeedback({
+        tipo: 'erro',
+        texto: 'Por favor, habilite pop-ups para abrir o documento na nova aba.'
+      });
       return;
     }
 
@@ -726,7 +1286,7 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     win.document.close();
   };
 
-  // Ação de baixar PDF: rápida, direta e segura via renderização vetorial nativa do navegador
+  // Ação de baixar PDF: abre na nova aba mantendo a tela original 100% intacta
   const handleBaixarArquivoPdf = (cliente: SorteioCliente) => {
     setGerandoPdfId(cliente.id);
     try {
@@ -737,7 +1297,10 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
       });
     } catch (err: any) {
       console.warn('Erro ao abrir documento:', err);
-      setClientePdfModal(cliente);
+      setFeedback({
+        tipo: 'erro',
+        texto: 'Por favor, permita pop-ups no seu navegador para abrir o documento na nova aba.'
+      });
     } finally {
       setTimeout(() => {
         setGerandoPdfId(null);
@@ -745,39 +1308,82 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     }
   };
 
-  // Compartilhar via WhatsApp com o cliente
-  const handleEnviarWhatsApp = (cliente: SorteioCliente) => {
-    const digitos = cliente.telefone.replace(/\D/g, '');
-    const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
-    const listaCuponsStr = (cliente.numerosCupons || []).map(n => `#${n}`).join(', ');
-    const mensagem = [
-      `✨ *NOVEMBRO PREMIADO OLOR LUZ* ✨`,
-      ``,
-      `Olá, *${cliente.nomeCliente}*! Seus cupons para o nosso sorteio já estão garantidos:`,
-      ``,
-      `🎟️ *Número(s) do(s) cupom(s):*`,
-      `*${listaCuponsStr}*`,
-      ``,
-      `Preparamos um superkit com 5 itens especiais da Olor Luz! 🎁`,
-      `• 1 difusor de ambiente de varetas`,
-      `• 1 sabonete líquido para as mãos`,
-      `• 1 kit com 6 mini aromatizadores spray`,
-      `• 1 kit difusor elétrico + essência`,
-      `• 1 Água de Lençóis 500 ml`,
-      ``,
-      `📅 *Participação:* de 1º a 30 de novembro.`,
-      `🎁 *Sorteio:* 1º de dezembro.`,
-      ``,
-      `_As fragrâncias dos produtos poderão ser escolhidas pelo ganhador entre as opções disponíveis, com exceção do kit de mini sprays, que já possui fragrâncias definidas._`,
-      ``,
-      `Boa sorte! 🍀✨`
-    ].join('\n');
+  // Compartilhar via WhatsApp com envio direto do arquivo PDF oficial do cupom
+  const handleEnviarWhatsApp = async (cliente: SorteioCliente) => {
+    setEnviandoWhatsAppId(cliente.id);
+    try {
+      // 1. Gera o arquivo Blob PDF oficial vetorial em alta resolução com imagem 1:1 centralizada sem cortes
+      const kitFinal = kitBase64.startsWith('data:image')
+        ? kitBase64
+        : await carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0);
 
-    const url = `https://wa.me/${ddiTelefone}?text=${encodeURIComponent(mensagem)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+      const pdfBlob = await gerarBlobPdfSorteio(
+        cliente,
+        logoBase64 || OFFICIAL_LOGO_URL,
+        kitFinal
+      );
+
+      const nomeClienteFormatado = (cliente.nomeCliente || 'Cliente').trim().replace(/[^a-zA-Z0-9]/g, '_');
+      const nomeArquivo = `Cupom_Sorteio_Olor_Luz_${nomeClienteFormatado}.pdf`;
+      const pdfFile = new File([pdfBlob], nomeArquivo, {
+        type: 'application/pdf',
+        lastModified: Date.now()
+      });
+
+      const digitos = cliente.telefone.replace(/\D/g, '');
+      const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
+
+      // 2. Se o dispositivo/navegador suporta Web Share com arquivos (Smartphones Android, iPhones iOS, etc.)
+      if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+        await navigator.share({
+          title: 'NOVEMBRO PREMIADO OLOR LUZ',
+          text: `Olá, ${cliente.nomeCliente}! Segue seu cupom oficial em PDF do sorteio Novembro Premiado da Olor Luz! 🍀✨`,
+          files: [pdfFile]
+        });
+        setFeedback({
+          tipo: 'sucesso',
+          texto: `Arquivo PDF do cupom enviado via WhatsApp para "${cliente.nomeCliente}"!`
+        });
+        return;
+      }
+
+      // 3. Em computadores/navegadores onde o navegador não permite injetar arquivo binário direto no WhatsApp Web:
+      // Dispara o download automático do arquivo PDF oficial do cupom para a máquina
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = blobUrl;
+      downloadLink.download = nomeArquivo;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+
+      // Abre a conversa do WhatsApp para o cliente
+      const msg = `Olá, *${cliente.nomeCliente}*! Segue em anexo o arquivo PDF oficial com os seus cupons do sorteio *Novembro Premiado Olor Luz*! 🍀✨`;
+      const waUrl = `https://wa.me/${ddiTelefone}?text=${encodeURIComponent(msg)}`;
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
+
+      setFeedback({
+        tipo: 'sucesso',
+        texto: `Arquivo PDF oficial (${nomeArquivo}) baixado! A conversa do WhatsApp com ${cliente.nomeCliente} foi aberta para você anexar o cupom.`
+      });
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        // Usuário apenas fechou a janela de compartilhamento
+        return;
+      }
+      console.warn('Erro ao compartilhar cupom por arquivo:', err);
+      // Fallback: abrir conversa do WhatsApp
+      const digitos = cliente.telefone.replace(/\D/g, '');
+      const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
+      const msg = `Olá, *${cliente.nomeCliente}*! Segue seu comprovante do sorteio *Novembro Premiado Olor Luz*! 🍀✨`;
+      window.open(`https://wa.me/${ddiTelefone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+    } finally {
+      setEnviandoWhatsAppId(null);
+    }
   };
 
-  // Realizar sorteio aleatório entre todos os cupons emitidos
+  // Realizar sorteio aleatório entre todos os cupons emitidos com tempo aumentado de embaralhamento
   const handleRealizarSorteio = () => {
     const pool: { numero: number; cliente: SorteioCliente }[] = [];
     clientes.forEach(c => {
@@ -792,11 +1398,13 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     setGanhadorSorteado(null);
 
     let contador = 0;
+    // Aumenta o tempo de embaralhamento dos números para ~3.8 segundos (48 ciclos de 80ms) gerando mais suspense e emoção
+    const totalCiclos = 48;
     const interval = setInterval(() => {
       const randomItem = pool[Math.floor(Math.random() * pool.length)];
       setCupomSorteadoNumero(randomItem.numero);
       contador++;
-      if (contador >= 18) {
+      if (contador >= totalCiclos) {
         clearInterval(interval);
         const vencedorFinal = pool[Math.floor(Math.random() * pool.length)];
         setCupomSorteadoNumero(vencedorFinal.numero);
@@ -937,11 +1545,11 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setClientePdfModal(feedback.clienteRecente!)}
+                    onClick={() => handleBaixarArquivoPdf(feedback.clienteRecente!)}
                     className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     <FileDown className="w-3.5 h-3.5" />
-                    <span>Abrir / Baixar PDF</span>
+                    <span>Baixar PDF / Imprimir</span>
                   </button>
                 </div>
               )}
@@ -1184,6 +1792,9 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
             <h3 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Ticket className="w-5 h-5 text-amber-400" />
               <span>Clientes Cadastrados & Cupons Emitidos</span>
+              <span className="text-[11px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full ml-1">
+                Mais recentes primeiro
+              </span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
               Clique em <strong>Baixar PDF</strong> ou <strong>Visualizar Cupom</strong> para gerar o encarte oficial com o logotipo Olor Luz.
@@ -1235,7 +1846,7 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-3 px-4">Cliente</th>
+                    <th className="py-3 px-4">Cliente (Lançamentos Recentes)</th>
                     <th className="py-3 px-4">Telefone (DDD)</th>
                     <th className="py-3 px-4 text-center">Qtde</th>
                     <th className="py-3 px-4">Número(s) do(s) Cupom(ns)</th>
@@ -1307,10 +1918,15 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                           <button
                             type="button"
                             onClick={() => handleEnviarWhatsApp(cliente)}
-                            className="p-2 bg-slate-950 hover:bg-emerald-950/60 text-emerald-400 border border-slate-800 rounded-lg transition-colors cursor-pointer"
-                            title="Enviar Cupons por WhatsApp"
+                            disabled={enviandoWhatsAppId === cliente.id}
+                            className="p-2 bg-slate-950 hover:bg-emerald-950/60 text-emerald-400 border border-slate-800 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                            title="Enviar Arquivo PDF dos Cupons por WhatsApp"
                           >
-                            <MessageCircle className="w-4 h-4" />
+                            {enviandoWhatsAppId === cliente.id ? (
+                              <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+                            ) : (
+                              <MessageCircle className="w-4 h-4" />
+                            )}
                           </button>
 
                           <button
@@ -1401,10 +2017,15 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                     <button
                       type="button"
                       onClick={() => handleEnviarWhatsApp(cliente)}
-                      className="flex-1 py-2 px-3 bg-slate-900 text-emerald-400 border border-slate-800 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
+                      disabled={enviandoWhatsAppId === cliente.id}
+                      className="flex-1 py-2 px-3 bg-slate-900 hover:bg-emerald-950/40 text-emerald-400 border border-slate-800 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      <span>WhatsApp</span>
+                      {enviandoWhatsAppId === cliente.id ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                      ) : (
+                        <MessageCircle className="w-3.5 h-3.5" />
+                      )}
+                      <span>{enviandoWhatsAppId === cliente.id ? 'Gerando...' : 'Enviar PDF'}</span>
                     </button>
 
                     <button
@@ -1499,8 +2120,12 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                   <span className="text-xs text-emerald-400 font-semibold block">
                     🎉 Ganhador(a) Identificado(a):
                   </span>
-                  <h4 className="text-xl font-bold text-white">{ganhadorSorteado.nomeCliente}</h4>
-                  <p className="text-xs font-mono text-slate-400">{ganhadorSorteado.telefone}</p>
+                  <h4 className="text-xl font-bold text-white">
+                    {mascararNomeGanhador(ganhadorSorteado.nomeCliente)}
+                  </h4>
+                  <p className="text-sm font-mono text-amber-300 font-bold tracking-wider">
+                    {mascararTelefonePrivacidade(ganhadorSorteado.telefone)}
+                  </p>
                 </div>
               )}
             </div>
@@ -1678,47 +2303,59 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                     Número(s) do(s) cupom(s):
                   </p>
 
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      justifyContent: 'center',
-                      gap: '12px'
-                    }}
-                  >
-                    {(clientePdfModal.numerosCupons || []).map((numero) => (
+                  {(() => {
+                    const modalBadgeStyle = getCouponBadgeStyles((clientePdfModal.numerosCupons || []).length || 1);
+                    return (
                       <div
-                        key={numero}
                         style={{
-                          background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
-                          color: '#FBBF24',
-                          border: '2px solid #F59E0B',
-                          borderRadius: '12px',
-                          padding: '10px 22px',
-                          fontSize: '36px',
-                          fontWeight: 900,
-                          lineHeight: 1,
-                          letterSpacing: '1px',
-                          fontVariantNumeric: 'tabular-nums'
+                          display: 'flex',
+                          flexWrap: 'nowrap',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: modalBadgeStyle.gap,
+                          width: '100%',
+                          overflow: 'hidden'
                         }}
                       >
-                        <span style={{ fontSize: '22px', color: '#FDE68A', marginRight: '2px' }}>
-                          #
-                        </span>
-                        {numero}
+                        {(clientePdfModal.numerosCupons || []).map((numero) => (
+                          <div
+                            key={numero}
+                            style={{
+                              background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+                              color: '#FBBF24',
+                              border: `${modalBadgeStyle.borderWidth} solid #F59E0B`,
+                              borderRadius: '8px',
+                              padding: modalBadgeStyle.padding,
+                              fontSize: modalBadgeStyle.fontSize,
+                              fontWeight: 900,
+                              lineHeight: 1.1,
+                              letterSpacing: '0.5px',
+                              fontVariantNumeric: 'tabular-nums',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 1,
+                              minWidth: 0,
+                              boxShadow: 'none'
+                            }}
+                          >
+                            <span style={{ fontSize: modalBadgeStyle.hashSize, color: '#FDE68A', marginRight: '2px', fontWeight: 700 }}>
+                              #
+                            </span>
+                            {numero}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </div>
 
-                {/* SEÇÃO DO SUPERKIT COM 5 ITENS + FOTO EM ALTA QUALIDADE */}
+                {/* SEÇÃO DO SUPERKIT COM 5 ITENS + FOTO EM ALTA QUALIDADE SEM CORTES */}
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '1.15fr 0.85fr',
-                    gap: '20px',
+                    gridTemplateColumns: '1fr 248px',
+                    gap: '16px',
                     alignItems: 'stretch',
-                    marginBottom: '18px'
+                    marginBottom: '16px'
                   }}
                 >
                   {/* Lista dos 5 Prêmios */}
@@ -1727,25 +2364,25 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                       backgroundColor: '#F8FAFC',
                       border: '1px solid #E2E8F0',
                       borderRadius: '14px',
-                      padding: '18px 20px',
+                      padding: '16px 20px',
                       display: 'flex',
                       flexDirection: 'column',
-                      justifyContent: 'center'
+                      justifyContent: 'space-between'
                     }}
                   >
                     <h2
                       style={{
-                        fontSize: '16px',
+                        fontSize: '15px',
                         fontWeight: 800,
                         color: '#0F172A',
-                        margin: '0 0 12px 0',
+                        margin: '0 0 10px 0',
                         lineHeight: 1.35
                       }}
                     >
                       Preparamos um superkit com 5 itens especiais da Olor Luz!
                     </h2>
 
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', flex: 1 }}>
                       {LISTA_PREMIOS_SORTEIO.map((item, idx) => (
                         <li
                           key={idx}
@@ -1753,12 +2390,12 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '10px',
-                            padding: '7px 0',
+                            padding: '6px 0',
                             borderBottom:
                               idx === LISTA_PREMIOS_SORTEIO.length - 1
                                 ? 'none'
                                 : '1px solid #E2E8F0',
-                            fontSize: '13.5px',
+                            fontSize: '13px',
                             fontWeight: 700,
                             color: '#1E293B'
                           }}
@@ -1786,41 +2423,54 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                     </ul>
                   </div>
 
-                  {/* Foto Oficial do Kit de Prêmios */}
+                  {/* Foto Oficial do Kit de Prêmios (Container 1:1 Quadrado - Visível 100% sem cortes) */}
                   <div
                     style={{
-                      borderRadius: '14px',
+                      width: '248px',
+                      borderRadius: '12px',
                       overflow: 'hidden',
-                      border: '2px solid #F59E0B',
+                      border: '1.5px solid #F59E0B',
                       backgroundColor: '#0F172A',
                       display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between'
+                      flexDirection: 'column'
                     }}
                   >
-                    <img
-                      src={kitBase64 || KIT_PREMIOS_IMAGE_URL}
-                      alt="Kit de Prêmios Olor Luz"
-                      crossOrigin="anonymous"
-                      referrerPolicy="no-referrer"
+                    <div
                       style={{
                         width: '100%',
-                        height: '245px',
-                        objectFit: 'cover',
-                        objectPosition: 'center 25%',
-                        display: 'block'
+                        aspectRatio: '1 / 1',
+                        backgroundColor: '#C9B59C',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden'
                       }}
-                    />
+                    >
+                      <img
+                        src={kitBase64 || KIT_PREMIOS_IMAGE_URL}
+                        alt="Kit de Prêmios Olor Luz"
+                        crossOrigin="anonymous"
+                        referrerPolicy="no-referrer"
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'contain',
+                          objectPosition: 'center center',
+                          display: 'block'
+                        }}
+                      />
+                    </div>
                     <div
                       style={{
                         backgroundColor: '#0F172A',
                         color: '#FDE68A',
                         textAlign: 'center',
-                        fontSize: '10.5px',
-                        fontWeight: 700,
-                        letterSpacing: '0.8px',
+                        fontSize: '9.5px',
+                        fontWeight: 800,
+                        letterSpacing: '0.7px',
                         textTransform: 'uppercase',
-                        padding: '6px 10px'
+                        padding: '6px 6px',
+                        borderTop: '1px solid rgba(245, 158, 11, 0.4)'
                       }}
                     >
                       Superkit Oficial • 5 Itens Exclusivos Olor Luz
