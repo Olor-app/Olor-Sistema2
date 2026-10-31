@@ -878,12 +878,99 @@ function quebrarTextoCanvas(ctx: CanvasRenderingContext2D, texto: string, maxWid
   return linhas;
 }
 
-// Gera o arquivo Blob PDF oficial renderizando o layout EXATO do "Baixar PDF" em Canvas 2.5x Retina (100% idêntico, com emojis nativos, fontes reais e sem desconfigurar)
-export async function gerarBlobPdfSorteio(
+// Compacta lista de números de cupons para URL curta (ex: [108,109,110] -> "108-110")
+function compactarNumerosCupons(numeros: number[]): string {
+  if (!numeros || numeros.length === 0) return '';
+  const ordenados = [...numeros].sort((a, b) => a - b);
+  const partes: string[] = [];
+  let inicio = ordenados[0];
+  let fim = ordenados[0];
+
+  for (let i = 1; i < ordenados.length; i++) {
+    if (ordenados[i] === fim + 1) {
+      fim = ordenados[i];
+    } else {
+      partes.push(inicio === fim ? `${inicio}` : `${inicio}-${fim}`);
+      inicio = ordenados[i];
+      fim = ordenados[i];
+    }
+  }
+  partes.push(inicio === fim ? `${inicio}` : `${inicio}-${fim}`);
+  return partes.join(',');
+}
+
+// Expande string compactada de cupons de volta para array numérico
+function expandirNumerosCupons(compacto: string): number[] {
+  if (!compacto) return [];
+  const resultado: number[] = [];
+  const partes = compacto.split(',');
+  for (const p of partes) {
+    if (p.includes('-')) {
+      const [iniStr, fimStr] = p.split('-');
+      const ini = parseInt(iniStr, 10);
+      const fim = parseInt(fimStr, 10);
+      if (!isNaN(ini) && !isNaN(fim) && fim >= ini && fim - ini <= 1000) {
+        for (let n = ini; n <= fim; n++) resultado.push(n);
+      }
+    } else {
+      const n = parseInt(p, 10);
+      if (!isNaN(n)) resultado.push(n);
+    }
+  }
+  return resultado;
+}
+
+// Codifica os dados do cupom em Base64URL seguro para UTF-8 (link direto de download do PDF no WhatsApp)
+export function codificarCupomUrl(cliente: SorteioCliente): string {
+  try {
+    const cuponsStr = compactarNumerosCupons(cliente.numerosCupons || []);
+    const payload = `${cliente.nomeCliente || 'Cliente'}|${cliente.telefone || ''}|${cuponsStr}|${cliente.dataCadastro || ''}`;
+    const bytes = new TextEncoder().encode(payload);
+    let bin = '';
+    bytes.forEach((b) => {
+      bin += String.fromCharCode(b);
+    });
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+// Decodifica o parâmetro ?cupom= da URL para exibir e baixar o PDF oficial sem exigir login
+export function decodificarCupomUrl(codigo: string): SorteioCliente | null {
+  try {
+    if (!codigo) return null;
+    const base64 = codigo.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = base64.length % 4;
+    const padded = pad ? base64 + '='.repeat(4 - pad) : base64;
+    const bin = atob(padded);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    const decoded = new TextDecoder().decode(bytes);
+    const [nomeCliente, telefone, cuponsStr, dataCadastro] = decoded.split('|');
+    if (!nomeCliente) return null;
+    const numerosCupons = expandirNumerosCupons(cuponsStr || '');
+    return {
+      id: 'cupom-publico',
+      nomeCliente,
+      telefone: telefone || '',
+      numerosCupons: numerosCupons.length > 0 ? numerosCupons : [100],
+      quantidadeCupons: numerosCupons.length || 1,
+      dataCadastro: dataCadastro || new Date().toISOString().slice(0, 10)
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Renderiza o Certificado Oficial de Participação em um Canvas 2.5x Retina com o layout EXATO do "Baixar PDF"
+export async function gerarCanvasCertificadoSorteio(
   cliente: SorteioCliente,
   logoBase64: string,
   kitBase64: string
-): Promise<Blob> {
+): Promise<{ canvas: HTMLCanvasElement; widthPx: number; heightPx: number }> {
   if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
     try {
       await document.fonts.ready;
@@ -1277,9 +1364,20 @@ export async function gerarBlobPdfSorteio(
   desenharRetanguloArredondado(ctx, 1, 1, W - 2, H - 2, 12);
   ctx.stroke();
 
+  return { canvas, widthPx: W, heightPx: H };
+}
+
+// Gera o arquivo Blob PDF oficial (1 página auto-dimensionada) a partir do Canvas 2.5x Retina idêntico ao "Baixar PDF"
+export async function gerarBlobPdfSorteio(
+  cliente: SorteioCliente,
+  logoBase64: string,
+  kitBase64: string
+): Promise<Blob> {
+  const { canvas, widthPx, heightPx } = await gerarCanvasCertificadoSorteio(cliente, logoBase64, kitBase64);
+
   // Converte para PDF de página única auto-dimensionada (210mm x altura exata proporcional)
   const pageWidthMm = 210;
-  const pageHeightMm = Number(((H * pageWidthMm) / W).toFixed(2));
+  const pageHeightMm = Number(((heightPx * pageWidthMm) / widthPx).toFixed(2));
 
   const doc = new jsPDF({
     orientation: 'p',
@@ -1571,26 +1669,10 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     }
   };
 
-  // Compartilhar via WhatsApp abrindo direto no número de telefone cadastrado do cupom e baixando o mesmo PDF oficial do "Baixar PDF"
-  const handleEnviarWhatsApp = async (cliente: SorteioCliente) => {
+  // Compartilha o arquivo PDF binário nativamente no celular/sistema (Web Share API) quando solicitado
+  const handleCompartilharPdfNativo = async (cliente: SorteioCliente) => {
     setEnviandoWhatsAppId(cliente.id);
-
-    const digitos = cliente.telefone.replace(/\D/g, '');
-    const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
-    const cuponsLista = (cliente.numerosCupons || []).map((n) => `#${n}`).join(', ');
-    const msg = `Olá, *${cliente.nomeCliente}*! Segue em anexo o arquivo PDF oficial com o(s) seu(s) cupom(ns) (${cuponsLista}) do sorteio *Novembro Premiado Olor Luz*! 🍀✨`;
-    const waUrl = `https://wa.me/${ddiTelefone}?text=${encodeURIComponent(msg)}`;
-
-    // Pré-abre a aba no evento de clique para evitar bloqueio de pop-up em celulares (iOS Safari / Android Chrome)
-    let waWindow: Window | null = null;
     try {
-      waWindow = window.open('', '_blank');
-    } catch {
-      waWindow = null;
-    }
-
-    try {
-      // 1. Gera o arquivo PDF oficial com o MESMO layout visual do botão "Baixar PDF"
       const kitFinal = kitBase64.startsWith('data:image')
         ? kitBase64
         : await carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0);
@@ -1603,8 +1685,20 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
 
       const nomeClienteFormatado = (cliente.nomeCliente || 'Cliente').trim().replace(/[^a-zA-Z0-9]/g, '_');
       const nomeArquivo = `NOVEMBRO_PREMIADO_OLOR_LUZ_-_${nomeClienteFormatado}.pdf`;
+      const pdfFile = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
+      const cuponsLista = (cliente.numerosCupons || []).map((n) => `#${n}`).join(', ');
 
-      // 2. Baixa automaticamente o arquivo PDF oficial idêntico ao "Baixar PDF"
+      const nav = navigator as any;
+      if (nav.share && (!nav.canShare || nav.canShare({ files: [pdfFile] }))) {
+        await nav.share({
+          files: [pdfFile],
+          title: `Cupom Oficial Olor Luz - ${cliente.nomeCliente}`,
+          text: `Olá, ${cliente.nomeCliente}! Segue o arquivo PDF oficial com o(s) seu(s) cupom(ns) (${cuponsLista}) do sorteio Novembro Premiado Olor Luz.`
+        });
+        return;
+      }
+
+      // Caso o navegador não suporte Web Share de arquivo, faz download do PDF
       const blobUrl = URL.createObjectURL(pdfBlob);
       const downloadLink = document.createElement('a');
       downloadLink.href = blobUrl;
@@ -1613,17 +1707,124 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
       downloadLink.click();
       document.body.removeChild(downloadLink);
       setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.warn('Erro ao compartilhar arquivo PDF:', err);
+      }
+    } finally {
+      setEnviandoWhatsAppId(null);
+    }
+  };
 
-      // 3. Direciona diretamente para a conversa do WhatsApp do número cadastrado no cupom
+  // Envia pelo WhatsApp Direto para o número do cadastro com Link Direto do PDF Oficial + Cópia Automática (Ctrl+V) + Download do PDF (sem caracteres corrompidos)
+  const handleEnviarWhatsApp = async (cliente: SorteioCliente) => {
+    setEnviandoWhatsAppId(cliente.id);
+
+    const digitos = cliente.telefone.replace(/\D/g, '');
+    const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
+    const cuponsLista = (cliente.numerosCupons || []).map((n) => `#${n}`).join(', ');
+
+    // Gera o link público direto que abre e baixa automaticamente o PDF de 1 página do cliente (sem exigir login)
+    const urlBase = typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}`.replace(/\/$/, '')
+      : '';
+    const codigoCupom = codificarCupomUrl(cliente);
+    const linkPdfOficial = `${urlBase}/?cupom=${codigoCupom}`;
+
+    // Mensagem formatada sem emojis de 4 bytes que quebram em "" no redirecionamento do WhatsApp
+    const msg = [
+      `*NOVEMBRO PREMIADO OLOR LUZ*`,
+      `Olá, *${cliente.nomeCliente}*!`,
+      ``,
+      `Sua participação no sorteio está confirmada!`,
+      `*Cupom(ns):* ${cuponsLista}`,
+      ``,
+      `*Clique no link abaixo para abrir e baixar o seu Cupom Oficial em PDF:*`,
+      linkPdfOficial,
+      ``,
+      `Sorteio: 1º de dezembro no Instagram @olorluz.`
+    ].join('\n');
+
+    // Usa api.whatsapp.com/send diretamente para preservar UTF-8 100% íntegro e abrir direto no número cadastrado
+    const waUrl = `https://api.whatsapp.com/send?phone=${ddiTelefone}&text=${encodeURIComponent(msg)}`;
+
+    // Pré-abre a aba no evento de clique para evitar bloqueio de pop-up
+    let waWindow: Window | null = null;
+    try {
+      waWindow = window.open('', '_blank');
+    } catch {
+      waWindow = null;
+    }
+
+    try {
+      const kitFinal = kitBase64.startsWith('data:image')
+        ? kitBase64
+        : await carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0);
+
+      // Renderiza o certificado oficial em alta resolução (2.5x Retina)
+      const { canvas, widthPx, heightPx } = await gerarCanvasCertificadoSorteio(
+        cliente,
+        logoBase64 || OFFICIAL_LOGO_URL,
+        kitFinal
+      );
+
+      // 1. Copia a imagem do certificado para a Área de Transferência (permite apertar Ctrl+V direto na conversa aberta do WhatsApp)
+      let copiadoClipboard = false;
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+          const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+          if (pngBlob) {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+            copiadoClipboard = true;
+          }
+        }
+      } catch {
+        copiadoClipboard = false;
+      }
+
+      // 2. Gera o arquivo PDF oficial de 1 página auto-dimensionada (idêntico ao "Baixar PDF")
+      const pageWidthMm = 210;
+      const pageHeightMm = Number(((heightPx * pageWidthMm) / widthPx).toFixed(2));
+      const doc = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: [pageWidthMm, pageHeightMm],
+        compress: true
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.96);
+      doc.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, pageHeightMm, undefined, 'FAST');
+      const pdfBlob = doc.output('blob');
+
+      const nomeClienteFormatado = (cliente.nomeCliente || 'Cliente').trim().replace(/[^a-zA-Z0-9]/g, '_');
+      const nomeArquivo = `NOVEMBRO_PREMIADO_OLOR_LUZ_-_${nomeClienteFormatado}.pdf`;
+
+      // 3. Abre a conversa do WhatsApp direto no telefone do cliente com o link do PDF oficial
       if (waWindow && !waWindow.closed) {
         waWindow.location.href = waUrl;
       } else {
         window.open(waUrl, '_blank', 'noopener,noreferrer');
       }
 
+      // 4. Dispara o download do arquivo .pdf com leve atraso para não conflitar com a abertura da aba do WhatsApp
+      setTimeout(() => {
+        try {
+          const blobUrl = URL.createObjectURL(pdfBlob);
+          const downloadLink = document.createElement('a');
+          downloadLink.href = blobUrl;
+          downloadLink.download = nomeArquivo;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+        } catch {}
+      }, 300);
+
       setFeedback({
         tipo: 'sucesso',
-        texto: `PDF oficial (${nomeArquivo}) gerado e conversa do WhatsApp aberta direto para o número ${cliente.telefone} (${cliente.nomeCliente})!`
+        texto: copiadoClipboard
+          ? `WhatsApp aberto direto para ${cliente.telefone} com o Link do PDF Oficial! O cupom também foi copiado (aperte Ctrl+V na conversa para colar a imagem) e o PDF (${nomeArquivo}) foi baixado.`
+          : `WhatsApp aberto direto para ${cliente.telefone} com o Link do PDF Oficial e arquivo PDF (${nomeArquivo}) baixado!`,
+        clienteRecente: cliente
       });
     } catch (err: any) {
       console.warn('Erro ao preparar PDF para WhatsApp:', err);
@@ -1796,7 +1997,24 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
               </div>
 
               {feedback.clienteRecente && (
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleEnviarWhatsApp(feedback.clienteRecente!)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>WhatsApp Direto</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCompartilharPdfNativo(feedback.clienteRecente!)}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/40 font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    title="Compartilhar arquivo PDF binário direto pelo menu do celular"
+                  >
+                    <FileDown className="w-3.5 h-3.5" />
+                    <span>Anexar PDF (App)</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleBaixarArquivoPdf(feedback.clienteRecente!)}
@@ -2848,3 +3066,127 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     </div>
   );
 };
+
+// Componente Público de Visualização e Download Automático do Cupom Oficial em PDF (acessado pelo link enviado no WhatsApp sem exigir login)
+export const PublicCupomView: React.FC<{ cliente: SorteioCliente }> = ({ cliente }) => {
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [baixando, setBaixando] = useState<boolean>(false);
+  const [statusTexto, setStatusTexto] = useState<string>('Gerando seu Certificado Oficial em PDF...');
+
+  const nomeClienteFormatado = (cliente.nomeCliente || 'Cliente').trim().replace(/[^a-zA-Z0-9]/g, '_');
+  const nomeArquivo = `NOVEMBRO_PREMIADO_OLOR_LUZ_-_${nomeClienteFormatado}.pdf`;
+
+  const dispararDownloadPdf = async () => {
+    setBaixando(true);
+    try {
+      const [logoB64, kitB64] = await Promise.all([
+        carregarImagemComoBase64(OFFICIAL_LOGO_URL),
+        carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0)
+      ]);
+      const { canvas, widthPx, heightPx } = await gerarCanvasCertificadoSorteio(cliente, logoB64, kitB64);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.96);
+      setPreviewUrl(dataUrl);
+
+      const pageWidthMm = 210;
+      const pageHeightMm = Number(((heightPx * pageWidthMm) / widthPx).toFixed(2));
+      const doc = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: [pageWidthMm, pageHeightMm],
+        compress: true
+      });
+      doc.addImage(dataUrl, 'JPEG', 0, 0, pageWidthMm, pageHeightMm, undefined, 'FAST');
+      const pdfBlob = doc.output('blob');
+
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = nomeArquivo;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+      setStatusTexto('Seu arquivo PDF oficial foi gerado e baixado automaticamente!');
+    } catch (err) {
+      console.warn('Erro ao gerar PDF público:', err);
+      setStatusTexto('Clique no botão abaixo para baixar ou imprimir seu cupom oficial.');
+    } finally {
+      setBaixando(false);
+    }
+  };
+
+  const abrirParaImpressao = async () => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const [logoB64, kitB64] = await Promise.all([
+      carregarImagemComoBase64(OFFICIAL_LOGO_URL),
+      carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0)
+    ]);
+    const html = gerarHtmlCupomSorteio(cliente, logoB64, kitB64, true);
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  };
+
+  useEffect(() => {
+    dispararDownloadPdf();
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-3 sm:p-6 font-sans">
+      <div className="w-full max-w-4xl bg-slate-900 border border-amber-500/40 rounded-2xl p-4 sm:p-6 mb-5 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5 text-center sm:text-left flex-col sm:flex-row">
+          <img
+            src={OFFICIAL_LOGO_URL}
+            alt="Olor Luz"
+            className="h-12 w-auto object-contain"
+          />
+          <div>
+            <h1 className="font-cinzel text-base sm:text-lg font-bold text-amber-300">
+              NOVEMBRO PREMIADO OLOR LUZ
+            </h1>
+            <p className="text-xs sm:text-sm text-emerald-300 font-medium mt-0.5">
+              {statusTexto}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={dispararDownloadPdf}
+            disabled={baixando}
+            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-extrabold text-xs sm:text-sm rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <FileDown className="w-4 h-4" />
+            <span>{baixando ? 'Baixando PDF...' : 'Baixar Meu Cupom em PDF'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={abrirParaImpressao}
+            className="px-4 py-2.5 bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-500/40 font-bold text-xs sm:text-sm rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Imprimir / Salvar PDF</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="w-full max-w-4xl flex justify-center">
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt={`Cupom Oficial Olor Luz - ${cliente.nomeCliente}`}
+            className="w-full h-auto rounded-2xl shadow-2xl border-2 border-amber-500/50 bg-white"
+          />
+        ) : (
+          <div className="py-16 text-center text-amber-300 font-semibold text-sm">
+            Carregando visualização do seu Certificado Oficial Olor Luz...
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+

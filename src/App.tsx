@@ -10,13 +10,21 @@ import { ListasManagement } from './components/ListasManagement';
 import { UserManagement } from './components/UserManagement';
 import { ComissoesView } from './components/ComissoesView';
 import { FormulasView } from './components/FormulasView';
-import { SorteioView } from './components/SorteioView';
+import { SorteioView, PublicCupomView, decodificarCupomUrl } from './components/SorteioView';
 import { LoginScreen } from './components/LoginScreen';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { AlertTriangle, Sparkles, RefreshCw, Database, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 
 export default function App() {
+  // Verifica se a URL contém um cupom público compartilhado via WhatsApp (?cupom=...)
+  const cupomPublico = React.useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const codigo = params.get('cupom');
+    return codigo ? decodificarCupomUrl(codigo) : null;
+  }, []);
+
   const [currentUser, setCurrentUserState] = useState<User | null>(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
@@ -95,6 +103,11 @@ export default function App() {
     const novos = Array.isArray(vendaOuLote) ? vendaOuLote : [vendaOuLote];
     setVendas((prev) => [...novos, ...prev]);
   };
+
+  // Se for um link público de cupom (?cupom=...), exibe e baixa o PDF oficial sem exigir login
+  if (cupomPublico) {
+    return <PublicCupomView cliente={cupomPublico} />;
+  }
 
   // Se não estiver logado, exibe APENAS a Tela de Login de Alto Padrão
   if (!currentUser) {
