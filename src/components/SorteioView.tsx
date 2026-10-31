@@ -592,7 +592,7 @@ function gerarHtmlCupomSorteio(
       background-color: #FFFBEB;
       border: 1px solid #FCD34D;
       border-radius: 10px;
-      padding: 8px 12px;
+      padding: 8px 14px;
       font-size: 10.5px;
       line-height: 1.4;
       color: #78350F;
@@ -600,6 +600,12 @@ function gerarHtmlCupomSorteio(
       font-weight: 600;
       margin-bottom: 8px;
       box-shadow: none !important;
+    }
+    .obs-line {
+      margin: 0 0 4px 0;
+    }
+    .obs-line:last-child {
+      margin-bottom: 0;
     }
     .doc-footer {
       margin-top: 2px;
@@ -708,7 +714,9 @@ function gerarHtmlCupomSorteio(
           </div>
         </div>
         <div class="obs-box">
-          As fragrâncias dos produtos poderão ser escolhidas pelo ganhador entre as opções disponíveis, com exceção do kit de mini sprays, que já possui fragrâncias definidas.
+          <p class="obs-line">As fragrâncias dos produtos poderão ser escolhidas pelo ganhador entre as opções disponíveis, com exceção do kit de mini sprays, que já possui fragrâncias definidas.</p>
+          <p class="obs-line"><strong>Prazo de retirada:</strong> O ganhador terá o prazo de 30 dias úteis após a data do sorteio para reclamar o prêmio.</p>
+          <p class="obs-line"><strong>Entrega:</strong> Para ganhadores de Uberaba, o super kit será entregue pela Olor Luz, mediante agendamento, sem cobrança de taxa. Para ganhadores de outras cidades, o custo do frete para envio será de responsabilidade do ganhador.</p>
         </div>
         <div class="doc-footer">
           <span>Olor Luz • Certificado Oficial de Participação</span>
@@ -742,7 +750,7 @@ function gerarHtmlCupomSorteio(
         // Nunca usa uma largura reduzida de tela mobile para não espremer a folha no @media print
         var dynStyle = document.getElementById('dynamic-page-size');
         if (dynStyle) {
-          var hPx = Math.ceil(sheet.offsetHeight || sheet.getBoundingClientRect().height || 695);
+          var hPx = Math.ceil(sheet.offsetHeight || sheet.getBoundingClientRect().height || 740);
           if (hPx > 0) {
             var hMm = ((hPx + 2) * 25.4 / 96).toFixed(2);
             dynStyle.textContent =
@@ -815,241 +823,473 @@ function gerarHtmlCupomSorteio(
 </html>`;
 }
 
-// Gera o arquivo Blob PDF oficial vetorial de alta definição com página autoajustada ao conteúdo e foto 1:1 sem cortes
+// Auxiliar para carregar imagem HTMLImageElement de forma segura
+async function carregarElementoImagem(src: string): Promise<HTMLImageElement | null> {
+  if (!src) return null;
+  return new Promise((resolve) => {
+    const img = new Image();
+    if (!src.startsWith('data:')) {
+      img.crossOrigin = 'anonymous';
+    }
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+// Auxiliar para desenhar retângulo arredondado no Canvas 2D
+function desenharRetanguloArredondado(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+// Auxiliar para quebrar texto em múltiplas linhas no Canvas 2D
+function quebrarTextoCanvas(ctx: CanvasRenderingContext2D, texto: string, maxWidth: number): string[] {
+  const palavras = texto.split(' ');
+  const linhas: string[] = [];
+  let linhaAtual = '';
+  for (const p of palavras) {
+    const teste = linhaAtual ? `${linhaAtual} ${p}` : p;
+    if (ctx.measureText(teste).width > maxWidth && linhaAtual) {
+      linhas.push(linhaAtual);
+      linhaAtual = p;
+    } else {
+      linhaAtual = teste;
+    }
+  }
+  if (linhaAtual) linhas.push(linhaAtual);
+  return linhas;
+}
+
+// Gera o arquivo Blob PDF oficial renderizando o layout EXATO do "Baixar PDF" em Canvas 2.5x Retina (100% idêntico, com emojis nativos, fontes reais e sem desconfigurar)
 export async function gerarBlobPdfSorteio(
   cliente: SorteioCliente,
   logoBase64: string,
   kitBase64: string
 ): Promise<Blob> {
-  const pageWidth = 210;
-  // Altura exatamente ajustada ao término do rodapé + margem mínima inferior (sem espaço em branco sobrando)
-  const pageHeight = 197;
+  if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+    try {
+      await document.fonts.ready;
+    } catch {}
+  }
+
+  const [logoImg, kitImg] = await Promise.all([
+    carregarElementoImagem(logoBase64 || OFFICIAL_LOGO_URL),
+    carregarElementoImagem(kitBase64 || KIT_PREMIOS_IMAGE_URL)
+  ]);
+
+  const W = 794; // Largura exata de 210mm a 96 DPI
+  const innerX = 18;
+  const innerW = W - 36; // 758px
+  const fontSans = "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  const fontSerif = "'Cinzel', Georgia, serif";
+
+  // Mede as linhas das 3 observações para calcular a altura exata do documento
+  const measureCanvas = document.createElement('canvas');
+  const mCtx = measureCanvas.getContext('2d')!;
+  mCtx.font = `600 10.5px ${fontSans}`;
+
+  const obsParagrafos = [
+    'As fragrâncias dos produtos poderão ser escolhidas pelo ganhador entre as opções disponíveis, com exceção do kit de mini sprays, que já possui fragrâncias definidas.',
+    'Prazo de retirada: O ganhador terá o prazo de 30 dias úteis após a data do sorteio para reclamar o prêmio.',
+    'Entrega: Para ganhadores de Uberaba, o super kit será entregue pela Olor Luz, mediante agendamento, sem cobrança de taxa. Para ganhadores de outras cidades, o custo do frete para envio será de responsabilidade do ganhador.'
+  ];
+
+  const obsLinhasPorParagrafo = obsParagrafos.map((p) => quebrarTextoCanvas(mCtx, p, innerW - 28));
+  const totalObsLinhas = obsLinhasPorParagrafo.reduce((acc, l) => acc + l.length, 0);
+  const obsLineHeight = 14.5;
+  const obsParaGap = 4;
+  const obsH = Math.ceil(totalObsLinhas * obsLineHeight + (obsParagrafos.length - 1) * obsParaGap + 18);
+
+  const headerH = 96;
+  const clientBarH = 31;
+  const couponsH = 78;
+  const kitGridH = 274; // 248px foto 1:1 + 26px legenda
+  const datesH = 68;
+  const footerH = 26;
+
+  // Altura total exata do certificado (sem margem branca sobrando)
+  const H = headerH + clientBarH + 12 + couponsH + 11 + kitGridH + 11 + datesH + 10 + obsH + 8 + footerH + 10;
+
+  const scale = 2.5;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(scale, scale);
+
+  // Fundo Branco Geral
+  ctx.fillStyle = '#FFFFFF';
+  desenharRetanguloArredondado(ctx, 1, 1, W - 2, H - 2, 12);
+  ctx.fill();
+
+  // 1. CABEÇALHO ESCURO (.header-banner)
+  ctx.save();
+  desenharRetanguloArredondado(ctx, 1, 1, W - 2, headerH, 12);
+  ctx.clip();
+  const headerGrad = ctx.createLinearGradient(0, 0, W, headerH);
+  headerGrad.addColorStop(0, '#090D16');
+  headerGrad.addColorStop(0.55, '#1E293B');
+  headerGrad.addColorStop(1, '#0F172A');
+  ctx.fillStyle = headerGrad;
+  ctx.fillRect(0, 0, W, headerH);
+
+  // Linha dourada na base do cabeçalho
+  ctx.fillStyle = '#F59E0B';
+  ctx.fillRect(0, headerH - 3, W, 3);
+
+  // Logotipo Olor Luz mantendo proporção natural exata (sem achatar nem esticar)
+  if (logoImg && logoImg.naturalWidth > 0 && logoImg.naturalHeight > 0) {
+    const logoH = 50;
+    const logoW = (logoImg.naturalWidth / logoImg.naturalHeight) * logoH;
+    ctx.drawImage(logoImg, (W - logoW) / 2, 10, logoW, logoH);
+  }
+
+  // Título Principal
+  ctx.fillStyle = '#FDE68A';
+  ctx.font = `900 21px ${fontSerif}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('NOVEMBRO PREMIADO OLOR LUZ', W / 2, 76);
+  ctx.restore();
+
+  // 2. FAIXA DE IDENTIFICAÇÃO DO CLIENTE (.client-bar)
+  const clientBarY = headerH;
+  ctx.fillStyle = '#FFFBEB';
+  ctx.fillRect(2, clientBarY, W - 4, clientBarH);
+  ctx.strokeStyle = '#FDE68A';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(2, clientBarY + clientBarH);
+  ctx.lineTo(W - 2, clientBarY + clientBarH);
+  ctx.stroke();
+
+  ctx.fillStyle = '#78350F';
+  ctx.font = `700 12px ${fontSans}`;
+  ctx.textBaseline = 'middle';
+  const clientTextY = clientBarY + clientBarH / 2 + 0.5;
+
+  ctx.textAlign = 'left';
+  ctx.fillText(`CLIENTE: ${cliente.nomeCliente}`, 20, clientTextY);
+
+  ctx.textAlign = 'center';
+  ctx.fillText(`TELEFONE: ${cliente.telefone}`, W / 2, clientTextY);
+
+  const totalCupons = cliente.numerosCupons?.length || cliente.quantidadeCupons || 1;
+  ctx.textAlign = 'right';
+  ctx.fillText(`QTDE DE CUPONS: ${totalCupons}`, W - 20, clientTextY);
+
+  // 3. SEÇÃO DE CUPONS (.coupons-section)
+  let curY = clientBarY + clientBarH + 12;
+  const couponsGrad = ctx.createLinearGradient(0, curY, 0, curY + couponsH);
+  couponsGrad.addColorStop(0, '#FFFBEB');
+  couponsGrad.addColorStop(1, '#FEF3C7');
+  ctx.fillStyle = couponsGrad;
+  desenharRetanguloArredondado(ctx, innerX, curY, innerW, couponsH, 12);
+  ctx.fill();
+
+  ctx.save();
+  ctx.strokeStyle = '#D97706';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  desenharRetanguloArredondado(ctx, innerX, curY, innerW, couponsH, 12);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = '#92400E';
+  ctx.font = `800 12px ${fontSans}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('NÚMERO(S) DO(S) CUPOM(S):', W / 2, curY + 19);
+
+  // Badges dos cupons em linha única com autoajuste idêntico ao HTML
+  const cupons = cliente.numerosCupons || [];
+  const count = cupons.length || 1;
+  let bFont = count <= 1 ? 28 : count === 2 ? 23 : count === 3 ? 20 : count === 4 ? 17 : count === 5 ? 15 : count <= 8 ? 13 : 11;
+  let bPadX = count <= 1 ? 20 : count === 2 ? 16 : count === 3 ? 13 : count === 4 ? 11 : count === 5 ? 10 : 7;
+  let bHeight = count <= 1 ? 40 : count === 2 ? 36 : count <= 4 ? 33 : 30;
+  let bGap = count <= 3 ? 8 : count <= 5 ? 6 : 4;
+
+  // Verifica se todos cabem na largura disponível e reduz proporcionalmente se necessário
+  ctx.font = `900 ${bFont}px ${fontSans}`;
+  const maxRowW = innerW - 28;
+  let badgeWidths = cupons.map((n) => Math.ceil(ctx.measureText(`#${n}`).width + bPadX * 2));
+  let totalRowW = badgeWidths.reduce((a, b) => a + b, 0) + (count - 1) * bGap;
+
+  if (totalRowW > maxRowW && totalRowW > 0) {
+    const ratio = (maxRowW / totalRowW) * 0.95;
+    bFont = Math.max(8, bFont * ratio);
+    bPadX = Math.max(4, bPadX * ratio);
+    bGap = Math.max(3, bGap * ratio);
+    ctx.font = `900 ${bFont}px ${fontSans}`;
+    badgeWidths = cupons.map((n) => Math.ceil(ctx.measureText(`#${n}`).width + bPadX * 2));
+    totalRowW = badgeWidths.reduce((a, b) => a + b, 0) + (count - 1) * bGap;
+  }
+
+  let bx = (W - totalRowW) / 2;
+  const by = curY + 32 + (36 - bHeight) / 2;
+
+  cupons.forEach((num, idx) => {
+    const bw = badgeWidths[idx];
+    const bGrad = ctx.createLinearGradient(bx, by, bx + bw, by + bHeight);
+    bGrad.addColorStop(0, '#0F172A');
+    bGrad.addColorStop(1, '#1E293B');
+    ctx.fillStyle = bGrad;
+    desenharRetanguloArredondado(ctx, bx, by, bw, bHeight, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = '#F59E0B';
+    ctx.lineWidth = count <= 2 ? 2 : 1.5;
+    desenharRetanguloArredondado(ctx, bx, by, bw, bHeight, 8);
+    ctx.stroke();
+
+    ctx.fillStyle = '#FBBF24';
+    ctx.font = `900 ${bFont}px ${fontSans}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`#${num}`, bx + bw / 2, by + bHeight / 2 + 1);
+
+    bx += bw + bGap;
+  });
+
+  // 4. SEÇÃO DO SUPERKIT E FOTO 1:1 (.kit-grid)
+  curY += couponsH + 11;
+  const imgBoxW = 248;
+  const kitGap = 12;
+  const prizesBoxW = innerW - imgBoxW - kitGap; // 498px
+
+  // Caixa da Esquerda: Lista de Prêmios
+  ctx.fillStyle = '#F8FAFC';
+  desenharRetanguloArredondado(ctx, innerX, curY, prizesBoxW, kitGridH, 12);
+  ctx.fill();
+  ctx.strokeStyle = '#E2E8F0';
+  ctx.lineWidth = 1;
+  desenharRetanguloArredondado(ctx, innerX, curY, prizesBoxW, kitGridH, 12);
+  ctx.stroke();
+
+  ctx.fillStyle = '#0F172A';
+  ctx.font = `800 14px ${fontSans}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Preparamos um superkit com 5 itens especiais da Olor Luz!', innerX + 16, curY + 15);
+
+  const listStartY = curY + 46;
+  const listAvailH = kitGridH - 54;
+  const itemStepH = listAvailH / LISTA_PREMIOS_SORTEIO.length;
+
+  LISTA_PREMIOS_SORTEIO.forEach((item, idx) => {
+    const itemCenterY = listStartY + idx * itemStepH + itemStepH / 2;
+
+    // Círculo dourado com estrela
+    ctx.fillStyle = '#FEF3C7';
+    ctx.beginPath();
+    ctx.arc(innerX + 25, itemCenterY, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#B45309';
+    ctx.font = `900 10px ${fontSans}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('✦', innerX + 25, itemCenterY + 0.5);
+
+    // Texto do item
+    ctx.fillStyle = '#1E293B';
+    ctx.font = `700 12.5px ${fontSans}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(item, innerX + 42, itemCenterY + 0.5);
+
+    // Linha divisória sutil
+    if (idx < LISTA_PREMIOS_SORTEIO.length - 1) {
+      const lineY = listStartY + (idx + 1) * itemStepH;
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(innerX + 16, lineY);
+      ctx.lineTo(innerX + prizesBoxW - 16, lineY);
+      ctx.stroke();
+    }
+  });
+
+  // Caixa da Direita: Foto 1:1 Quadrada sem cortes (.image-box)
+  const imgBoxX = innerX + prizesBoxW + kitGap;
+  ctx.save();
+  desenharRetanguloArredondado(ctx, imgBoxX, curY, imgBoxW, kitGridH, 12);
+  ctx.fillStyle = '#0F172A';
+  ctx.fill();
+  ctx.clip();
+
+  // Frame 1:1 (248x248)
+  ctx.fillStyle = '#C9B59C';
+  ctx.fillRect(imgBoxX, curY, imgBoxW, imgBoxW);
+  if (kitImg && kitImg.naturalWidth > 0 && kitImg.naturalHeight > 0) {
+    const kAspect = kitImg.naturalWidth / kitImg.naturalHeight;
+    let dw = imgBoxW;
+    let dh = imgBoxW;
+    let dx = imgBoxX;
+    let dy = curY;
+    if (kAspect > 1) {
+      dh = imgBoxW / kAspect;
+      dy = curY + (imgBoxW - dh) / 2;
+    } else if (kAspect < 1) {
+      dw = imgBoxW * kAspect;
+      dx = imgBoxX + (imgBoxW - dw) / 2;
+    }
+    ctx.drawImage(kitImg, dx, dy, dw, dh);
+  }
+
+  // Legenda inferior da foto
+  ctx.fillStyle = '#0F172A';
+  ctx.fillRect(imgBoxX, curY + imgBoxW, imgBoxW, kitGridH - imgBoxW);
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.4)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(imgBoxX, curY + imgBoxW);
+  ctx.lineTo(imgBoxX + imgBoxW, curY + imgBoxW);
+  ctx.stroke();
+
+  ctx.fillStyle = '#FDE68A';
+  ctx.font = `800 9.2px ${fontSans}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('SUPERKIT OFICIAL • 5 ITENS EXCLUSIVOS OLOR LUZ', imgBoxX + imgBoxW / 2, curY + imgBoxW + 13);
+  ctx.restore();
+
+  ctx.strokeStyle = '#F59E0B';
+  ctx.lineWidth = 1.5;
+  desenharRetanguloArredondado(ctx, imgBoxX, curY, imgBoxW, kitGridH, 12);
+  ctx.stroke();
+
+  // 5. SEÇÃO DE DATAS E SORTEIO (.dates-grid)
+  curY += kitGridH + 11;
+  const dateGap = 10;
+  const dateBox1W = Math.round((innerW - dateGap) * 0.425); // ~318px
+  const dateBox2W = innerW - dateGap - dateBox1W; // ~430px
+
+  // Caixa 1: Participação
+  const dGrad1 = ctx.createLinearGradient(innerX, curY, innerX + dateBox1W, curY + datesH);
+  dGrad1.addColorStop(0, '#0F172A');
+  dGrad1.addColorStop(1, '#1E293B');
+  ctx.fillStyle = dGrad1;
+  desenharRetanguloArredondado(ctx, innerX, curY, dateBox1W, datesH, 10);
+  ctx.fill();
+  ctx.strokeStyle = '#F59E0B';
+  ctx.lineWidth = 1.5;
+  desenharRetanguloArredondado(ctx, innerX, curY, dateBox1W, datesH, 10);
+  ctx.stroke();
+
+  ctx.fillStyle = '#FDE68A';
+  ctx.font = `800 12.5px ${fontSans}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('📅 Participação: de 1º a 30 de novembro.', innerX + dateBox1W / 2, curY + datesH / 2);
+
+  // Caixa 2: Sorteio
+  const box2X = innerX + dateBox1W + dateGap;
+  const dGrad2 = ctx.createLinearGradient(box2X, curY, box2X + dateBox2W, curY + datesH);
+  dGrad2.addColorStop(0, '#0F172A');
+  dGrad2.addColorStop(1, '#1E293B');
+  ctx.fillStyle = dGrad2;
+  desenharRetanguloArredondado(ctx, box2X, curY, dateBox2W, datesH, 10);
+  ctx.fill();
+  ctx.strokeStyle = '#F59E0B';
+  ctx.lineWidth = 1.5;
+  desenharRetanguloArredondado(ctx, box2X, curY, dateBox2W, datesH, 10);
+  ctx.stroke();
+
+  ctx.fillStyle = '#FDE68A';
+  ctx.font = `800 11.8px ${fontSans}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🎁 Sorteio: 1º de dezembro! O vídeo do sorteio, com a divulgação', box2X + dateBox2W / 2, curY + 19);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = `600 11px ${fontSans}`;
+  ctx.fillText('do ganhador, será publicado na página oficial da Olor Luz no', box2X + dateBox2W / 2, curY + 36);
+  ctx.fillStyle = '#FDE68A';
+  ctx.font = `800 11px ${fontSans}`;
+  ctx.fillText('Instagram: @olorluz.', box2X + dateBox2W / 2, curY + 51);
+
+  // 6. CAIXA DE OBSERVAÇÕES (.obs-box) COM AS 3 OBSERVAÇÕES OFICIAIS
+  curY += datesH + 10;
+  ctx.fillStyle = '#FFFBEB';
+  desenharRetanguloArredondado(ctx, innerX, curY, innerW, obsH, 10);
+  ctx.fill();
+  ctx.strokeStyle = '#FCD34D';
+  ctx.lineWidth = 1;
+  desenharRetanguloArredondado(ctx, innerX, curY, innerW, obsH, 10);
+  ctx.stroke();
+
+  ctx.fillStyle = '#78350F';
+  ctx.font = `600 10.5px ${fontSans}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  let obsCurY = curY + 9;
+  obsLinhasPorParagrafo.forEach((linhasPara, pIdx) => {
+    linhasPara.forEach((linha) => {
+      ctx.fillText(linha, W / 2, obsCurY);
+      obsCurY += obsLineHeight;
+    });
+    if (pIdx < obsLinhasPorParagrafo.length - 1) {
+      obsCurY += obsParaGap;
+    }
+  });
+
+  // 7. RODAPÉ (.doc-footer)
+  curY += obsH + 8;
+  ctx.strokeStyle = '#E2E8F0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(innerX, curY);
+  ctx.lineTo(innerX + innerW, curY);
+  ctx.stroke();
+
+  ctx.fillStyle = '#64748B';
+  ctx.font = `500 10px ${fontSans}`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText('Olor Luz • Certificado Oficial de Participação', innerX, curY + 14);
+
+  ctx.textAlign = 'right';
+  ctx.fillText(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, innerX + innerW, curY + 14);
+
+  // Borda Externa Dourada (.sheet)
+  ctx.strokeStyle = '#D97706';
+  ctx.lineWidth = 2;
+  desenharRetanguloArredondado(ctx, 1, 1, W - 2, H - 2, 12);
+  ctx.stroke();
+
+  // Converte para PDF de página única auto-dimensionada (210mm x altura exata proporcional)
+  const pageWidthMm = 210;
+  const pageHeightMm = Number(((H * pageWidthMm) / W).toFixed(2));
 
   const doc = new jsPDF({
     orientation: 'p',
     unit: 'mm',
-    format: [pageWidth, pageHeight],
+    format: [pageWidthMm, pageHeightMm],
     compress: true
   });
 
-  const marginX = 6;
-  const contentWidth = pageWidth - marginX * 2; // 198mm
-  const marginY = 5;
-  const contentHeight = pageHeight - marginY * 2; // 187mm
-
-  // Cabeçalho Escuro
-  doc.setFillColor(9, 13, 22);
-  doc.rect(marginX, marginY, contentWidth, 32, 'F');
-  doc.setFillColor(245, 158, 11);
-  doc.rect(marginX, marginY + 30.8, contentWidth, 1.2, 'F');
-
-  // Logotipo no Cabeçalho
-  let headerTextY = marginY + 24;
-  if (logoBase64 && logoBase64.startsWith('data:image')) {
-    try {
-      const format = logoBase64.includes('image/jpeg') ? 'JPEG' : 'PNG';
-      doc.addImage(logoBase64, format, pageWidth / 2 - 18, marginY + 2, 36, 15, undefined, 'FAST');
-      headerTextY = marginY + 27.5;
-    } catch {
-      headerTextY = marginY + 22;
-    }
-  }
-
-  // Título do Cabeçalho
-  doc.setTextColor(253, 230, 138);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13.5);
-  doc.text('NOVEMBRO PREMIADO OLOR LUZ', pageWidth / 2, headerTextY, { align: 'center' });
-
-  // Faixa de Informações do Cliente
-  const clientBarY = marginY + 32;
-  doc.setFillColor(255, 251, 235);
-  doc.rect(marginX, clientBarY, contentWidth, 9.5, 'F');
-  doc.setDrawColor(253, 230, 138);
-  doc.setLineWidth(0.3);
-  doc.line(marginX, clientBarY + 9.5, marginX + contentWidth, clientBarY + 9.5);
-
-  doc.setTextColor(120, 53, 15);
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`CLIENTE: ${cliente.nomeCliente}`, marginX + 5, clientBarY + 6.3);
-  doc.text(`TELEFONE: ${cliente.telefone}`, marginX + 88, clientBarY + 6.3);
-  const totalCupons = cliente.numerosCupons?.length || cliente.quantidadeCupons || 1;
-  doc.text(`QTDE DE CUPONS: ${totalCupons}`, marginX + contentWidth - 5, clientBarY + 6.3, { align: 'right' });
-
-  // Caixa de Destaque dos Cupons
-  let curY = clientBarY + 12.5;
-  const couponsHeight = 23;
-  doc.setFillColor(254, 243, 199);
-  doc.roundedRect(marginX + 4, curY, contentWidth - 8, couponsHeight, 3, 3, 'F');
-  doc.setDrawColor(217, 119, 6);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(marginX + 4, curY, contentWidth - 8, couponsHeight, 3, 3, 'S');
-
-  doc.setTextColor(146, 64, 14);
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.text('NÚMERO(S) DO(S) CUPOM(S):', pageWidth / 2, curY + 5.5, { align: 'center' });
-
-  // Cupons auto-ajustados em linha única
-  const cupons = cliente.numerosCupons || [];
-  const count = cupons.length || 1;
-  const availWidth = contentWidth - 16;
-  const gapMm = count > 8 ? 1.5 : 3;
-  const badgeWidth = Math.min(36, Math.max(8, (availWidth - (count - 1) * gapMm) / count));
-  const badgeHeight = 12;
-  const totalBadgesWidth = count * badgeWidth + (count - 1) * gapMm;
-  let startX = (pageWidth - totalBadgesWidth) / 2;
-  const badgeY = curY + 8;
-
-  const cupomFontSize = count <= 2 ? 14 : count <= 4 ? 11.5 : count <= 7 ? 9 : count <= 12 ? 7.5 : 6;
-
-  cupons.forEach((num) => {
-    doc.setFillColor(15, 23, 42);
-    doc.roundedRect(startX, badgeY, badgeWidth, badgeHeight, 2, 2, 'F');
-    doc.setDrawColor(245, 158, 11);
-    doc.setLineWidth(0.4);
-    doc.roundedRect(startX, badgeY, badgeWidth, badgeHeight, 2, 2, 'S');
-
-    doc.setTextColor(251, 191, 36);
-    doc.setFontSize(cupomFontSize);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`#${num}`, startX + badgeWidth / 2, badgeY + badgeHeight / 2 + (cupomFontSize > 11 ? 1.8 : 1.3), {
-      align: 'center'
-    });
-
-    startX += badgeWidth + gapMm;
-  });
-
-  // Seção do Kit & Prêmios (Container da foto 1:1 quadrado sem cortes: 64x64mm + legenda 7mm = 71mm)
-  curY += couponsHeight + 3;
-  const kitBoxWidth = 65;
-  const prizesWidth = contentWidth - 8 - kitBoxWidth - 4;
-  const kitSectionHeight = 71;
-
-  // Lista dos Prêmios (Esquerda)
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(marginX + 4, curY, prizesWidth, kitSectionHeight, 3, 3, 'F');
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(marginX + 4, curY, prizesWidth, kitSectionHeight, 3, 3, 'S');
-
-  doc.setTextColor(15, 23, 42);
-  doc.setFontSize(9.5);
-  doc.setFont('helvetica', 'bold');
-  const titleLines = doc.splitTextToSize('Preparamos um superkit com 5 itens especiais da Olor Luz!', prizesWidth - 10);
-  doc.text(titleLines, marginX + 8, curY + 7.5);
-
-  let prizeY = curY + 18.5;
-  LISTA_PREMIOS_SORTEIO.forEach((p) => {
-    doc.setFillColor(254, 243, 199);
-    doc.circle(marginX + 9.5, prizeY - 1, 2, 'F');
-    doc.setTextColor(180, 83, 9);
-    doc.setFontSize(6.5);
-    doc.text('✦', marginX + 9.5, prizeY - 0.2, { align: 'center' });
-
-    doc.setTextColor(30, 41, 59);
-    doc.setFontSize(8.2);
-    doc.setFont('helvetica', 'bold');
-    const pLines = doc.splitTextToSize(p, prizesWidth - 17);
-    doc.text(pLines, marginX + 14, prizeY);
-    prizeY += 10.5;
-  });
-
-  // Foto do Kit (Direita - Container 1:1 quadrado 64x64mm: 100% visível e centralizada sem cortes!)
-  const imgX = marginX + 4 + prizesWidth + 4;
-  doc.setFillColor(15, 23, 42);
-  doc.roundedRect(imgX, curY, kitBoxWidth, kitSectionHeight, 3, 3, 'F');
-  doc.setDrawColor(245, 158, 11);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(imgX, curY, kitBoxWidth, kitSectionHeight, 3, 3, 'S');
-
-  const imgSquareSize = 64;
-  if (kitBase64 && kitBase64.startsWith('data:image')) {
-    try {
-      const format = kitBase64.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(kitBase64, format, imgX + 0.5, curY + 0.5, imgSquareSize, imgSquareSize, undefined, 'FAST');
-    } catch {}
-  }
-  doc.setTextColor(253, 230, 138);
-  doc.setFontSize(6);
-  doc.setFont('helvetica', 'bold');
-  doc.text('SUPERKIT OFICIAL • 5 ITENS EXCLUSIVOS OLOR LUZ', imgX + kitBoxWidth / 2, curY + 68.5, { align: 'center' });
-
-  // Destaques de Datas (Participação e Sorteio lado a lado)
-  curY += kitSectionHeight + 3;
-  const dateBox1W = (contentWidth - 12) * 0.41;
-  const dateBox2W = contentWidth - 8 - dateBox1W - 4;
-  const datesHeight = 23;
-
-  // Box Participação
-  doc.setFillColor(15, 23, 42);
-  doc.roundedRect(marginX + 4, curY, dateBox1W, datesHeight, 3, 3, 'F');
-  doc.setDrawColor(245, 158, 11);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(marginX + 4, curY, dateBox1W, datesHeight, 3, 3, 'S');
-
-  doc.setTextColor(253, 230, 138);
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.text('📅 Participação: de 1º a 30 de novembro.', marginX + 4 + dateBox1W / 2, curY + 12.5, { align: 'center' });
-
-  // Box Sorteio
-  const box2X = marginX + 4 + dateBox1W + 4;
-  doc.setFillColor(15, 23, 42);
-  doc.roundedRect(box2X, curY, dateBox2W, datesHeight, 3, 3, 'F');
-  doc.setDrawColor(245, 158, 11);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(box2X, curY, dateBox2W, datesHeight, 3, 3, 'S');
-
-  doc.setTextColor(253, 230, 138);
-  doc.setFontSize(8.3);
-  doc.setFont('helvetica', 'bold');
-  doc.text('🎁 Sorteio: 1º de dezembro!', box2X + 5, curY + 7);
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(7.2);
-  doc.setFont('helvetica', 'normal');
-  const sorteioDesc = doc.splitTextToSize(
-    'O vídeo do sorteio, com a divulgação do ganhador, será publicado na página oficial da Olor Luz no Instagram: @olorluz.',
-    dateBox2W - 10
-  );
-  doc.text(sorteioDesc, box2X + 5, curY + 12.5);
-
-  // Observações
-  curY += datesHeight + 2.5;
-  const obsHeight = 13.5;
-  doc.setFillColor(255, 251, 235);
-  doc.roundedRect(marginX + 4, curY, contentWidth - 8, obsHeight, 2.5, 2.5, 'F');
-  doc.setDrawColor(252, 211, 77);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(marginX + 4, curY, contentWidth - 8, obsHeight, 2.5, 2.5, 'S');
-
-  doc.setTextColor(120, 53, 15);
-  doc.setFontSize(7.3);
-  doc.setFont('helvetica', 'normal');
-  const obsText = doc.splitTextToSize(
-    'As fragrâncias dos produtos poderão ser escolhidas pelo ganhador entre as opções disponíveis, com exceção do kit de mini sprays, que já possui fragrâncias definidas.',
-    contentWidth - 16
-  );
-  doc.text(obsText, pageWidth / 2, curY + 5.8, { align: 'center' });
-
-  // Rodapé
-  curY += obsHeight + 2.5;
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.3);
-  doc.line(marginX + 4, curY, marginX + contentWidth - 4, curY);
-
-  doc.setTextColor(100, 116, 139);
-  doc.setFontSize(7.2);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Olor Luz • Certificado Oficial de Participação', marginX + 4, curY + 4.5);
-  doc.text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, marginX + contentWidth - 4, curY + 4.5, { align: 'right' });
-
-  // Borda Externa Dourada - enquadramento exato ao redor do conteúdo (sem espaço vazio na base)
-  doc.setDrawColor(217, 119, 6);
-  doc.setLineWidth(0.8);
-  doc.roundedRect(marginX, marginY, contentWidth, contentHeight, 3.5, 3.5, 'S');
+  const imgData = canvas.toDataURL('image/jpeg', 0.96);
+  doc.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, pageHeightMm, undefined, 'FAST');
 
   return doc.output('blob');
 }
@@ -1331,11 +1571,26 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     }
   };
 
-  // Compartilhar via WhatsApp com envio direto do arquivo PDF oficial do cupom
+  // Compartilhar via WhatsApp abrindo direto no número de telefone cadastrado do cupom e baixando o mesmo PDF oficial do "Baixar PDF"
   const handleEnviarWhatsApp = async (cliente: SorteioCliente) => {
     setEnviandoWhatsAppId(cliente.id);
+
+    const digitos = cliente.telefone.replace(/\D/g, '');
+    const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
+    const cuponsLista = (cliente.numerosCupons || []).map((n) => `#${n}`).join(', ');
+    const msg = `Olá, *${cliente.nomeCliente}*! Segue em anexo o arquivo PDF oficial com o(s) seu(s) cupom(ns) (${cuponsLista}) do sorteio *Novembro Premiado Olor Luz*! 🍀✨`;
+    const waUrl = `https://wa.me/${ddiTelefone}?text=${encodeURIComponent(msg)}`;
+
+    // Pré-abre a aba no evento de clique para evitar bloqueio de pop-up em celulares (iOS Safari / Android Chrome)
+    let waWindow: Window | null = null;
     try {
-      // 1. Gera o arquivo Blob PDF oficial vetorial em alta resolução com imagem 1:1 centralizada sem cortes
+      waWindow = window.open('', '_blank');
+    } catch {
+      waWindow = null;
+    }
+
+    try {
+      // 1. Gera o arquivo PDF oficial com o MESMO layout visual do botão "Baixar PDF"
       const kitFinal = kitBase64.startsWith('data:image')
         ? kitBase64
         : await carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0);
@@ -1347,31 +1602,9 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
       );
 
       const nomeClienteFormatado = (cliente.nomeCliente || 'Cliente').trim().replace(/[^a-zA-Z0-9]/g, '_');
-      const nomeArquivo = `Cupom_Sorteio_Olor_Luz_${nomeClienteFormatado}.pdf`;
-      const pdfFile = new File([pdfBlob], nomeArquivo, {
-        type: 'application/pdf',
-        lastModified: Date.now()
-      });
+      const nomeArquivo = `NOVEMBRO_PREMIADO_OLOR_LUZ_-_${nomeClienteFormatado}.pdf`;
 
-      const digitos = cliente.telefone.replace(/\D/g, '');
-      const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
-
-      // 2. Se o dispositivo/navegador suporta Web Share com arquivos (Smartphones Android, iPhones iOS, etc.)
-      if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-        await navigator.share({
-          title: 'NOVEMBRO PREMIADO OLOR LUZ',
-          text: `Olá, ${cliente.nomeCliente}! Segue seu cupom oficial em PDF do sorteio Novembro Premiado da Olor Luz! 🍀✨`,
-          files: [pdfFile]
-        });
-        setFeedback({
-          tipo: 'sucesso',
-          texto: `Arquivo PDF do cupom enviado via WhatsApp para "${cliente.nomeCliente}"!`
-        });
-        return;
-      }
-
-      // 3. Em computadores/navegadores onde o navegador não permite injetar arquivo binário direto no WhatsApp Web:
-      // Dispara o download automático do arquivo PDF oficial do cupom para a máquina
+      // 2. Baixa automaticamente o arquivo PDF oficial idêntico ao "Baixar PDF"
       const blobUrl = URL.createObjectURL(pdfBlob);
       const downloadLink = document.createElement('a');
       downloadLink.href = blobUrl;
@@ -1379,28 +1612,26 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
       document.body.appendChild(downloadLink);
       downloadLink.click();
       document.body.removeChild(downloadLink);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
 
-      // Abre a conversa do WhatsApp para o cliente
-      const msg = `Olá, *${cliente.nomeCliente}*! Segue em anexo o arquivo PDF oficial com os seus cupons do sorteio *Novembro Premiado Olor Luz*! 🍀✨`;
-      const waUrl = `https://wa.me/${ddiTelefone}?text=${encodeURIComponent(msg)}`;
-      window.open(waUrl, '_blank', 'noopener,noreferrer');
+      // 3. Direciona diretamente para a conversa do WhatsApp do número cadastrado no cupom
+      if (waWindow && !waWindow.closed) {
+        waWindow.location.href = waUrl;
+      } else {
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      }
 
       setFeedback({
         tipo: 'sucesso',
-        texto: `Arquivo PDF oficial (${nomeArquivo}) baixado! A conversa do WhatsApp com ${cliente.nomeCliente} foi aberta para você anexar o cupom.`
+        texto: `PDF oficial (${nomeArquivo}) gerado e conversa do WhatsApp aberta direto para o número ${cliente.telefone} (${cliente.nomeCliente})!`
       });
     } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        // Usuário apenas fechou a janela de compartilhamento
-        return;
+      console.warn('Erro ao preparar PDF para WhatsApp:', err);
+      if (waWindow && !waWindow.closed) {
+        waWindow.location.href = waUrl;
+      } else {
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
       }
-      console.warn('Erro ao compartilhar cupom por arquivo:', err);
-      // Fallback: abrir conversa do WhatsApp
-      const digitos = cliente.telefone.replace(/\D/g, '');
-      const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
-      const msg = `Olá, *${cliente.nomeCliente}*! Segue seu comprovante do sorteio *Novembro Premiado Olor Luz*! 🍀✨`;
-      window.open(`https://wa.me/${ddiTelefone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
     } finally {
       setEnviandoWhatsAppId(null);
     }
@@ -2564,23 +2795,34 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
                   </div>
                 </div>
 
-                {/* OBSERVAÇÃO SOBRE AS FRAGRÂNCIAS */}
+                {/* OBSERVAÇÕES SOBRE FRAGRÂNCIAS, PRAZO E ENTREGA */}
                 <div
                   style={{
                     backgroundColor: '#FFFBEB',
                     border: '1px solid #FCD34D',
                     borderRadius: '10px',
                     padding: '11px 16px',
-                    fontSize: '12px',
-                    lineHeight: 1.5,
+                    fontSize: '11.5px',
+                    lineHeight: 1.45,
                     color: '#78350F',
                     textAlign: 'center',
-                    fontWeight: 600
+                    fontWeight: 600,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
                   }}
                 >
-                  As fragrâncias dos produtos poderão ser escolhidas pelo ganhador entre as opções
-                  disponíveis, com exceção do kit de mini sprays, que já possui fragrâncias
-                  definidas.
+                  <p style={{ margin: 0 }}>
+                    As fragrâncias dos produtos poderão ser escolhidas pelo ganhador entre as opções
+                    disponíveis, com exceção do kit de mini sprays, que já possui fragrâncias
+                    definidas.
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    <strong>Prazo de retirada:</strong> O ganhador terá o prazo de 30 dias úteis após a data do sorteio para reclamar o prêmio.
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    <strong>Entrega:</strong> Para ganhadores de Uberaba, o super kit será entregue pela Olor Luz, mediante agendamento, sem cobrança de taxa. Para ganhadores de outras cidades, o custo do frete para envio será de responsabilidade do ganhador.
+                  </p>
                 </div>
 
                 {/* RODAPÉ DO CERTIFICADO */}
