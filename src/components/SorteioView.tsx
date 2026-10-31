@@ -823,15 +823,25 @@ function gerarHtmlCupomSorteio(
 </html>`;
 }
 
-// Auxiliar para carregar imagem HTMLImageElement de forma segura
+// Cache em memória dos elementos HTMLImageElement para geração instantânea (<30ms) do PDF sem perder o gesto de clique do navegador
+const cacheElementosImagem = new Map<string, HTMLImageElement>();
+
+// Auxiliar para carregar imagem HTMLImageElement de forma segura e instantânea quando já em cache
 async function carregarElementoImagem(src: string): Promise<HTMLImageElement | null> {
   if (!src) return null;
+  const emCache = cacheElementosImagem.get(src);
+  if (emCache && emCache.complete && emCache.naturalWidth > 0) {
+    return emCache;
+  }
   return new Promise((resolve) => {
     const img = new Image();
     if (!src.startsWith('data:')) {
       img.crossOrigin = 'anonymous';
     }
-    img.onload = () => resolve(img);
+    img.onload = () => {
+      cacheElementosImagem.set(src, img);
+      resolve(img);
+    };
     img.onerror = () => resolve(null);
     img.src = src;
   });
@@ -1441,9 +1451,17 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
 
   useEffect(() => {
     carregarClientes();
-    // Pré-carrega imagens em Base64 para exportação PDF de alta resolução com enquadramento 1:1 sem cortes
-    carregarImagemComoBase64(OFFICIAL_LOGO_URL).then(setLogoBase64);
-    carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0).then(setKitBase64);
+    // Pré-carrega imagens em Base64 e em HTMLImageElement para geração instantânea do PDF no clique do WhatsApp
+    carregarElementoImagem(OFFICIAL_LOGO_URL);
+    carregarElementoImagem(KIT_PREMIOS_IMAGE_URL);
+    carregarImagemComoBase64(OFFICIAL_LOGO_URL).then((b64) => {
+      setLogoBase64(b64);
+      carregarElementoImagem(b64);
+    });
+    carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0).then((b64) => {
+      setKitBase64(b64);
+      carregarElementoImagem(b64);
+    });
   }, []);
 
   // Próximo número de cupom global (iniciando em 100)
@@ -1716,123 +1734,67 @@ export const SorteioView: React.FC<SorteioViewProps> = ({ currentUser }) => {
     }
   };
 
-  // Envia pelo WhatsApp Direto para o número do cadastro com Link Direto do PDF Oficial + Cópia Automática (Ctrl+V) + Download do PDF (sem caracteres corrompidos)
+  // Envia o ARQUIVO PDF OFICIAL diretamente pelo compartilhamento nativo (Web Share API) com o mesmo layout do "Baixar PDF"
   const handleEnviarWhatsApp = async (cliente: SorteioCliente) => {
     setEnviandoWhatsAppId(cliente.id);
 
     const digitos = cliente.telefone.replace(/\D/g, '');
     const ddiTelefone = digitos.startsWith('55') ? digitos : `55${digitos}`;
     const cuponsLista = (cliente.numerosCupons || []).map((n) => `#${n}`).join(', ');
-
-    // Gera o link público direto que abre e baixa automaticamente o PDF de 1 página do cliente (sem exigir login)
-    const urlBase = typeof window !== 'undefined'
-      ? `${window.location.origin}${window.location.pathname}`.replace(/\/$/, '')
-      : '';
-    const codigoCupom = codificarCupomUrl(cliente);
-    const linkPdfOficial = `${urlBase}/?cupom=${codigoCupom}`;
-
-    // Mensagem formatada sem emojis de 4 bytes que quebram em "" no redirecionamento do WhatsApp
-    const msg = [
-      `*NOVEMBRO PREMIADO OLOR LUZ*`,
-      `Olá, *${cliente.nomeCliente}*!`,
-      ``,
-      `Sua participação no sorteio está confirmada!`,
-      `*Cupom(ns):* ${cuponsLista}`,
-      ``,
-      `*Clique no link abaixo para abrir e baixar o seu Cupom Oficial em PDF:*`,
-      linkPdfOficial,
-      ``,
-      `Sorteio: 1º de dezembro no Instagram @olorluz.`
-    ].join('\n');
-
-    // Usa api.whatsapp.com/send diretamente para preservar UTF-8 100% íntegro e abrir direto no número cadastrado
+    const msg = `Olá, *${cliente.nomeCliente}*! Segue em anexo o arquivo PDF oficial com o(s) seu(s) cupom(ns) (${cuponsLista}) do sorteio *Novembro Premiado Olor Luz*!`;
     const waUrl = `https://api.whatsapp.com/send?phone=${ddiTelefone}&text=${encodeURIComponent(msg)}`;
 
-    // Pré-abre a aba no evento de clique para evitar bloqueio de pop-up
-    let waWindow: Window | null = null;
     try {
-      waWindow = window.open('', '_blank');
-    } catch {
-      waWindow = null;
-    }
-
-    try {
-      const kitFinal = kitBase64.startsWith('data:image')
-        ? kitBase64
-        : await carregarImagemKitCentralizada(KIT_PREMIOS_IMAGE_URL, 1.0);
-
-      // Renderiza o certificado oficial em alta resolução (2.5x Retina)
-      const { canvas, widthPx, heightPx } = await gerarCanvasCertificadoSorteio(
+      // 1. Gera instantaneamente o arquivo PDF oficial com o MESMO layout visual de 1 página do "Baixar PDF"
+      const pdfBlob = await gerarBlobPdfSorteio(
         cliente,
         logoBase64 || OFFICIAL_LOGO_URL,
-        kitFinal
+        kitBase64 || KIT_PREMIOS_IMAGE_URL
       );
-
-      // 1. Copia a imagem do certificado para a Área de Transferência (permite apertar Ctrl+V direto na conversa aberta do WhatsApp)
-      let copiadoClipboard = false;
-      try {
-        if (typeof navigator !== 'undefined' && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
-          const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-          if (pngBlob) {
-            await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-            copiadoClipboard = true;
-          }
-        }
-      } catch {
-        copiadoClipboard = false;
-      }
-
-      // 2. Gera o arquivo PDF oficial de 1 página auto-dimensionada (idêntico ao "Baixar PDF")
-      const pageWidthMm = 210;
-      const pageHeightMm = Number(((heightPx * pageWidthMm) / widthPx).toFixed(2));
-      const doc = new jsPDF({
-        orientation: 'p',
-        unit: 'mm',
-        format: [pageWidthMm, pageHeightMm],
-        compress: true
-      });
-      const imgData = canvas.toDataURL('image/jpeg', 0.96);
-      doc.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, pageHeightMm, undefined, 'FAST');
-      const pdfBlob = doc.output('blob');
 
       const nomeClienteFormatado = (cliente.nomeCliente || 'Cliente').trim().replace(/[^a-zA-Z0-9]/g, '_');
       const nomeArquivo = `NOVEMBRO_PREMIADO_OLOR_LUZ_-_${nomeClienteFormatado}.pdf`;
+      const pdfFile = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
 
-      // 3. Abre a conversa do WhatsApp direto no telefone do cliente com o link do PDF oficial
-      if (waWindow && !waWindow.closed) {
-        waWindow.location.href = waUrl;
-      } else {
-        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      // 2. Prioridade 1: Envia o ARQUIVO PDF DIRETAMENTE pelo compartilhamento nativo (igual funcionava antes, agora com o PDF 100% corrigido)
+      const nav = navigator as any;
+      if (nav.share && (!nav.canShare || nav.canShare({ files: [pdfFile] }))) {
+        await nav.share({
+          files: [pdfFile],
+          title: `Cupom Oficial Olor Luz - ${cliente.nomeCliente}`,
+          text: msg
+        });
+
+        setFeedback({
+          tipo: 'sucesso',
+          texto: `Arquivo PDF oficial (${nomeArquivo}) enviado diretamente para o WhatsApp!`
+        });
+        return;
       }
 
-      // 4. Dispara o download do arquivo .pdf com leve atraso para não conflitar com a abertura da aba do WhatsApp
-      setTimeout(() => {
-        try {
-          const blobUrl = URL.createObjectURL(pdfBlob);
-          const downloadLink = document.createElement('a');
-          downloadLink.href = blobUrl;
-          downloadLink.download = nomeArquivo;
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-          setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
-        } catch {}
-      }, 300);
+      // 3. Fallback para computadores onde o navegador não suporta navigator.share de arquivos:
+      // Baixa o arquivo PDF oficial e abre a conversa do cliente no WhatsApp
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = blobUrl;
+      downloadLink.download = nomeArquivo;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
 
       setFeedback({
         tipo: 'sucesso',
-        texto: copiadoClipboard
-          ? `WhatsApp aberto direto para ${cliente.telefone} com o Link do PDF Oficial! O cupom também foi copiado (aperte Ctrl+V na conversa para colar a imagem) e o PDF (${nomeArquivo}) foi baixado.`
-          : `WhatsApp aberto direto para ${cliente.telefone} com o Link do PDF Oficial e arquivo PDF (${nomeArquivo}) baixado!`,
-        clienteRecente: cliente
+        texto: `Arquivo PDF (${nomeArquivo}) baixado e conversa do WhatsApp aberta para ${cliente.telefone} (${cliente.nomeCliente})!`
       });
     } catch (err: any) {
-      console.warn('Erro ao preparar PDF para WhatsApp:', err);
-      if (waWindow && !waWindow.closed) {
-        waWindow.location.href = waUrl;
-      } else {
-        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      if (err?.name === 'AbortError') {
+        return;
       }
+      console.warn('Erro ao enviar PDF para WhatsApp:', err);
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
     } finally {
       setEnviandoWhatsAppId(null);
     }
